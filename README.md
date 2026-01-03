@@ -1,6 +1,43 @@
-# Scripts de Automação
+# 🚀 DevOps Toolkit v1.1.0
 
-Coleção de scripts bash para automatizar tarefas de desenvolvimento e administração de sistema, otimizados para macOS e Linux.
+Professional development and system administration toolkit with packaging, automation, and storage management capabilities.
+
+## 🎯 What's New in v1.1.0
+
+### 🌟 Mac Storage Manager v2.0 - Complete Rewrite
+- **Interactive Mode**: Enhanced fzf-based interface with beautiful menus
+- **Professional CLI**: Complete command-line interface with comprehensive options
+- **Smart Cleanup**: Docker, Xcode, Node.js, Git optimization, and intelligent cache management
+- **Storage Analytics**: Disk usage analysis, large file detection, and duplicate file identification
+- **Safety First**: Confirmation prompts, size estimation, and detailed operation logging
+
+## 📦 Quick Start
+
+### Installation Options
+
+#### Option 1: Direct Usage
+```bash
+# Clone the repository
+git clone <repository-url>
+cd Scripts
+
+# Run Mac Storage Manager
+./Storage/mac-storage-manager.sh
+
+# Or use specific commands
+./Storage/mac-storage-manager.sh clean-docker
+./Storage/mac-storage-manager.sh disk-usage
+```
+
+#### Option 2: Professional Packages
+```bash
+# Build packages
+make deb        # Debian/Ubuntu package
+make rpm        # RedHat/CentOS package  
+make homebrew   # macOS Homebrew formula
+```
+
+## 🛠️ Core Components
 
 ## 📁 Estrutura
 

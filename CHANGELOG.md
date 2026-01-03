@@ -8,18 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.0] - 2026-01-03
 
 ### Added
-- 
-
-### Changed
-- 
-
-### Fixed
-- 
-
-
-## [1.1.0] - 2025-01-03
-
-### Added
 - Mac Storage Manager v2.0 with complete rewrite
 - Interactive fzf-based interface for better user experience
 - Non-interactive CLI mode for automation and scripting
