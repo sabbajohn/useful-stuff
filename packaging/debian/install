@@ -1,0 +1,4 @@
+# DevOps Toolkit Files
+devops-toolkit/* /opt/devops-toolkit/
+Django/* /opt/devops-toolkit/Django/
+packaging/debian/README.Debian /usr/share/doc/devops-toolkit/

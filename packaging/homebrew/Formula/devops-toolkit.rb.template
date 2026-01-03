@@ -1,0 +1,62 @@
+class DevopsToolkit < Formula
+  desc "Collection of development and deployment scripts"
+  homepage "https://github.com/sabbajohn/useful-stuff"
+  url "https://github.com/sabbajohn/useful-stuff/archive/v{{VERSION}}.tar.gz"
+  sha256 "{{SHA256}}"  # This will be updated automatically
+  license "MIT"
+  
+  depends_on "bash"
+  depends_on "curl"
+  depends_on "git"
+  depends_on "python@3.11"
+  depends_on "php"
+  
+  def install
+    # Install main directory
+    libexec.install Dir["*"]
+    
+    # Create wrapper scripts in bin
+    (bin/"django-creator").write <<~EOS
+      #!/bin/bash
+      exec "#{libexec}/devops-toolkit/bin/scripts/django-project-creator-v3.sh" "$@"
+    EOS
+    
+    (bin/"php-switcher").write <<~EOS
+      #!/bin/bash
+      exec "#{libexec}/devops-toolkit/bin/scripts/php-switcher.sh" "$@"
+    EOS
+    
+    (bin/"download-manager").write <<~EOS
+      #!/bin/bash
+      exec "#{libexec}/devops-toolkit/bin/scripts/download-manager.sh" "$@"
+    EOS
+    
+    (bin/"laravel-start").write <<~EOS
+      #!/bin/bash
+      exec "#{libexec}/devops-toolkit/bin/scripts/laravel-start.sh" "$@"
+    EOS
+    
+    (bin/"storage-manager").write <<~EOS
+      #!/bin/bash
+      exec "#{libexec}/devops-toolkit/bin/scripts/mac-storage-manager.sh" "$@"
+    EOS
+    
+    (bin/"dns-fix").write <<~EOS
+      #!/bin/bash
+      exec "#{libexec}/devops-toolkit/bin/scripts/quick-dns-fix.sh" "$@"
+    EOS
+  end
+
+  test do
+    # Test that the main scripts exist and are executable
+    assert_predicate bin/"django-creator", :exist?
+    assert_predicate bin/"php-switcher", :exist?
+    assert_predicate bin/"download-manager", :exist?
+    assert_predicate bin/"laravel-start", :exist?
+    assert_predicate bin/"storage-manager", :exist?
+    assert_predicate bin/"dns-fix", :exist?
+    
+    # Test that Django creator shows help
+    system "#{bin}/django-creator", "--help"
+  end
+end

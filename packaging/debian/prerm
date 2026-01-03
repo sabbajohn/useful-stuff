@@ -1,0 +1,14 @@
+#!/bin/bash
+# Pre removal script
+
+set -e
+
+# Remove symlinks
+rm -f /usr/local/bin/django-creator
+rm -f /usr/local/bin/php-switcher
+rm -f /usr/local/bin/download-manager
+rm -f /usr/local/bin/laravel-start
+rm -f /usr/local/bin/storage-manager
+rm -f /usr/local/bin/dns-fix
+
+echo "DevOps Toolkit symlinks removed."

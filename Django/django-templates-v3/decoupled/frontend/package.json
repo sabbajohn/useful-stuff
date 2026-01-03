@@ -1,0 +1,25 @@
+{
+    "name": "projtest-frontend",
+    "version": "1.0.0",
+    "description": "Frontend Vue.js + Quasar para ProjTest",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "preview": "vite preview",
+        "lint": "eslint . --ext .vue,.js,.ts --fix"
+    },
+    "dependencies": {
+        "vue": "^3.4.0",
+        "quasar": "^2.16.0",
+        "vue-router": "^4.2.0",
+        "pinia": "^2.1.0",
+        "axios": "^1.6.0"
+    },
+    "devDependencies": {
+        "@vitejs/plugin-vue": "^4.5.0",
+        "@quasar/vite-plugin": "^1.6.0",
+        "vite": "^5.0.0",
+        "eslint": "^8.55.0",
+        "eslint-plugin-vue": "^9.18.0"
+    }
+}

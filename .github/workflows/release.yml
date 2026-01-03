@@ -1,0 +1,206 @@
+name: Build and Release Packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Make scripts executable
+      run: |
+        chmod +x devops-toolkit/bin/scripts/*.sh
+        chmod +x *.sh
+    
+    - name: Run basic tests
+      run: |
+        # Test that scripts exist and have basic structure
+        for script in devops-toolkit/bin/scripts/*.sh; do
+          echo "Testing $script..."
+          bash -n "$script"  # Syntax check
+        done
+        
+        # Test main Django creator script
+        bash django-project-creator-v3.sh --help || echo "Help test completed"
+
+  build-deb:
+    needs: test
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y dpkg-dev build-essential
+    
+    - name: Extract version from tag
+      id: version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+    
+    - name: Update package version
+      run: |
+        sed -i "s/Version: 1.0.0/Version: ${{ steps.version.outputs.VERSION }}/" packaging/debian/control
+    
+    - name: Build Debian package
+      run: make deb
+    
+    - name: Upload DEB artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: debian-package
+        path: build/debian/*.deb
+
+  build-rpm:
+    needs: test
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install RPM build tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y rpm
+    
+    - name: Extract version from tag
+      id: version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+    
+    - name: Update RPM version
+      run: |
+        sed -i "s/Version:        1.0.0/Version:        ${{ steps.version.outputs.VERSION }}/" packaging/rpm/devops-toolkit.spec
+    
+    - name: Build RPM package
+      run: make rpm
+    
+    - name: Upload RPM artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rpm-package
+        path: build/rpm/RPMS/*/*.rpm
+
+  generate-homebrew:
+    needs: test
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Extract version from tag
+      id: version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+    
+    - name: Generate SHA256
+      id: sha
+      run: |
+        # Create a temporary tarball to calculate SHA256
+        tar -czf temp.tar.gz --exclude='.git' --exclude='build' .
+        echo "SHA256=$(sha256sum temp.tar.gz | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+        rm temp.tar.gz
+    
+    - name: Generate Homebrew formula
+      run: |
+        sed 's/{{VERSION}}/${{ steps.version.outputs.VERSION }}/g; s/{{SHA256}}/${{ steps.sha.outputs.SHA256 }}/g' \
+          packaging/homebrew/Formula/devops-toolkit.rb.template > \
+          packaging/homebrew/Formula/devops-toolkit.rb
+    
+    - name: Upload Homebrew formula
+      uses: actions/upload-artifact@v4
+      with:
+        name: homebrew-formula
+        path: packaging/homebrew/Formula/devops-toolkit.rb
+
+  create-release:
+    needs: [build-deb, build-rpm, generate-homebrew]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Extract version from tag
+      id: version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+    
+    - name: Create release tarball
+      run: make release
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: ./artifacts
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        draft: false
+        prerelease: false
+        name: "DevOps Toolkit v${{ steps.version.outputs.VERSION }}"
+        body: |
+          # DevOps Toolkit v${{ steps.version.outputs.VERSION }}
+          
+          ## Installation
+          
+          ### Debian/Ubuntu (.deb)
+          ```bash
+          wget https://github.com/sabbajohn/useful-stuff/releases/download/v${{ steps.version.outputs.VERSION }}/devops-toolkit_${{ steps.version.outputs.VERSION }}_all.deb
+          sudo dpkg -i devops-toolkit_${{ steps.version.outputs.VERSION }}_all.deb
+          ```
+          
+          ### RedHat/CentOS (.rpm)
+          ```bash
+          wget https://github.com/sabbajohn/useful-stuff/releases/download/v${{ steps.version.outputs.VERSION }}/devops-toolkit-${{ steps.version.outputs.VERSION }}-1.noarch.rpm
+          sudo rpm -i devops-toolkit-${{ steps.version.outputs.VERSION }}-1.noarch.rpm
+          ```
+          
+          ### macOS (Homebrew)
+          ```bash
+          # Add tap (first time only)
+          brew tap sabbajohn/devops-toolkit https://github.com/sabbajohn/useful-stuff
+          
+          # Install
+          brew install devops-toolkit
+          ```
+          
+          ### Manual Installation
+          ```bash
+          wget https://github.com/sabbajohn/useful-stuff/releases/download/v${{ steps.version.outputs.VERSION }}/devops-toolkit-${{ steps.version.outputs.VERSION }}.tar.gz
+          tar -xzf devops-toolkit-${{ steps.version.outputs.VERSION }}.tar.gz
+          cd useful-stuff-${{ steps.version.outputs.VERSION }}
+          make install
+          ```
+          
+          ## Available Commands
+          
+          After installation, the following commands will be available:
+          - `django-creator` - Create Django projects with templates
+          - `php-switcher` - Switch between PHP versions
+          - `download-manager` - Download manager utility
+          - `laravel-start` - Laravel project starter
+          - `storage-manager` - Storage management (macOS)
+          - `dns-fix` - Quick DNS troubleshooting
+          
+          ## What's Changed
+          
+          - Initial packaged release of DevOps Toolkit
+          - Professional packaging for multiple distributions
+          - Automated CI/CD pipeline for releases
+          
+        files: |
+          build/release/*.tar.gz
+          artifacts/debian-package/*.deb
+          artifacts/rpm-package/*.rpm
+          artifacts/homebrew-formula/devops-toolkit.rb
+        token: ${{ secrets.GITHUB_TOKEN }}

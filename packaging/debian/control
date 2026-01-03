@@ -1,0 +1,19 @@
+Package: devops-toolkit
+Version: 1.1.0
+Section: utils
+Priority: optional
+Architecture: all
+Depends: bash (>= 4.0), curl, git, docker.io | docker-ce, python3, php-cli
+Maintainer: John Sabba <johnsabba@example.com>
+Homepage: https://github.com/sabbajohn/useful-stuff
+Description: DevOps Toolkit - Collection of development and deployment scripts
+ A comprehensive collection of development scripts including:
+ - Django project creator with multiple templates
+ - PHP version switcher
+ - Network troubleshooting tools
+ - Storage management utilities
+ - Download manager
+ - Laravel starter scripts
+ .
+ This toolkit helps developers and DevOps engineers automate common tasks
+ and streamline their development workflow.
