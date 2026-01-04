@@ -1,43 +1,75 @@
 # 🚀 DevOps Toolkit v1.1.0
 
-Professional development and system administration toolkit with packaging, automation, and storage management capabilities.
+Professional development and system administration toolkit with networking, SSH management, storage optimization, and Django project automation.
 
 ## 🎯 What's New in v1.1.0
 
-### 🌟 Mac Storage Manager v2.0 - Complete Rewrite
+### 🌐 Network Management Suite
+- **SSH Manager**: Advanced SSH connection management with device discovery
+- **Network Config Checker**: Network analysis with MAC address detection and device tracking
+- **Device Discovery**: Automatic network scanning with manufacturer identification
+- **Connection History**: Recent connections tracking and quick reconnect
+
+### 📡 Storage Management v2.0
 - **Interactive Mode**: Enhanced fzf-based interface with beautiful menus
-- **Professional CLI**: Complete command-line interface with comprehensive options
+- **Symlink Manager**: External drive integration with automatic symlink creation
 - **Smart Cleanup**: Docker, Xcode, Node.js, Git optimization, and intelligent cache management
 - **Storage Analytics**: Disk usage analysis, large file detection, and duplicate file identification
-- **Safety First**: Confirmation prompts, size estimation, and detailed operation logging
+
+### 🔧 Django Automation
+- **Multi-template Support**: API, Web, Fullstack, and Decoupled architectures
+- **Docker Integration**: Ready-to-use Docker containers and compose files
+- **Professional Structure**: Industry-standard project organization
 
 ## 📦 Quick Start
 
-### Installation Options
-
-#### Option 1: Direct Usage
+### Development Installation
 ```bash
-# Clone the repository
+# Clone and install for development
 git clone <repository-url>
 cd Scripts
 
-# Run Mac Storage Manager
-./Storage/mac-storage-manager.sh
+# Run interactive installer
+./dev-install.sh
 
-# Or use specific commands
-./Storage/mac-storage-manager.sh clean-docker
-./Storage/mac-storage-manager.sh disk-usage
+# Or install manually
+make install        # System-wide installation
 ```
 
-#### Option 2: Professional Packages
+### Direct Usage
 ```bash
-# Build packages
-make deb        # Debian/Ubuntu package
-make rpm        # RedHat/CentOS package  
-make homebrew   # macOS Homebrew formula
+# Network tools
+./Redes/ssh-manager.sh
+./Redes/network-config-checker.sh
+
+# Storage management
+./Storage/mac-storage-manager.sh
+./Storage/symlink-manager.sh
+
+# Django projects
+./django-project-creator-v3.sh
 ```
 
 ## 🛠️ Core Components
+
+### 🌐 Network & SSH Tools
+- **ssh-manager.sh** - Advanced SSH connection management with:
+  - Device discovery integration
+  - Connection history and favorites
+  - Key management and organization
+  - SSHFS mounting support
+- **network-config-checker.sh** - Network analysis with:
+  - Device scanning and MAC detection
+  - Manufacturer identification
+  - Network troubleshooting utilities
+  - Connectivity testing (netcat, telnet, nmap)
+
+### 💾 Storage Management
+- **mac-storage-manager.sh** - Comprehensive storage optimization
+- **symlink-manager.sh** - External drive integration and symlink management
+
+### 🐍 Django Development
+- **django-project-creator-v3.sh** - Professional Django project generator
 
 ## 📁 Estrutura
 

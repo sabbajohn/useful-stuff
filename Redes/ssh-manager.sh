@@ -28,6 +28,99 @@ fi
 
 # Arquivo de configuração para salvar conexões
 CONFIG_FILE="$HOME/.ssh_manager_config"
+# Arquivo de histórico de dispositivos de rede (compartilhado com network-config-checker)
+DEVICE_HISTORY="$HOME/.network_devices_history"
+# Arquivo de histórico de conexões recentes
+RECENT_CONNECTIONS="$HOME/.ssh_recent_connections"
+
+# Função para listar dispositivos descobertos na rede
+list_network_devices() {
+    echo "🌐 Dispositivos Descobertos na Rede"
+    echo "=================================="
+    
+    if [[ ! -f "$DEVICE_HISTORY" ]] || [[ ! -s "$DEVICE_HISTORY" ]]; then
+        echo "❌ Nenhum dispositivo descoberto no histórico"
+        echo "💡 Execute o Network Config Checker para escanear a rede"
+        echo "💡 Comando: ./network-config-checker.sh"
+        return 0
+    fi
+    
+    echo "📋 Dispositivos encontrados recentemente:"
+    echo "------------------------------------------"
+    printf "%-15s %-18s %-20s %s\n" "IP" "MAC Address" "Fabricante" "Última Vista"
+    echo "------------------------------------------"
+    
+    # Lista os últimos 15 dispositivos descobertos
+    sort -t'|' -k4 -r "$DEVICE_HISTORY" | head -15 | while IFS='|' read -r ip mac vendor timestamp; do
+        printf "%-15s %-18s %-20s %s\n" "$ip" "$mac" "$vendor" "$timestamp"
+    done
+    
+    echo "------------------------------------------"
+    echo "📊 Total de dispositivos únicos: $(cut -d'|' -f1 "$DEVICE_HISTORY" | sort | uniq | wc -l)"
+    echo
+}
+
+# Função para sugerir hosts baseado no histórico
+suggest_hosts() {
+    local suggestions=()
+    
+    # Adiciona dispositivos da rede local
+    if [[ -f "$DEVICE_HISTORY" ]]; then
+        while IFS='|' read -r ip mac vendor timestamp; do
+            # Filtra dispositivos que podem ser servidores (excluindo roteadores comuns)
+            if [[ "$vendor" != *"Router"* ]] && [[ "$vendor" != *"Gateway"* ]]; then
+                suggestions+=("$ip ($vendor)")
+            fi
+        done < <(sort -t'|' -k4 -r "$DEVICE_HISTORY" | head -10)
+    fi
+    
+    # Adiciona conexões recentes
+    if [[ -f "$RECENT_CONNECTIONS" ]]; then
+        while IFS='|' read -r timestamp ip user port; do
+            suggestions+=("$ip [Recente: $user@$ip:$port]")
+        done < <(head -5 "$RECENT_CONNECTIONS")
+    fi
+    
+    # Adiciona conexões salvas
+    if [[ -f "$CONFIG_FILE" ]]; then
+        while IFS='|' read -r name user host port key_path; do
+            suggestions+=("$host [Salvo: $name]")
+        done < "$CONFIG_FILE"
+    fi
+    
+    # IPs comuns para desenvolvimento
+    suggestions+=(
+        "127.0.0.1 (localhost)"
+        "192.168.1.1 (Gateway comum)"
+        "192.168.0.1 (Gateway alternativo)"
+        "10.0.0.1 (Gateway privado)"
+    )
+    
+    printf '%s\n' "${suggestions[@]}" | sort | uniq
+}
+
+# Função para registrar conexão recente
+register_recent_connection() {
+    local ip="$1"
+    local user="$2"
+    local port="$3"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    # Remove entradas antigas do mesmo IP+user+port
+    if [[ -f "$RECENT_CONNECTIONS" ]]; then
+        grep -v "^.*|$ip|$user|$port$" "$RECENT_CONNECTIONS" > "${RECENT_CONNECTIONS}.tmp" 2>/dev/null || true
+        mv "${RECENT_CONNECTIONS}.tmp" "$RECENT_CONNECTIONS" 2>/dev/null || true
+    fi
+    
+    # Adiciona nova entrada
+    echo "$timestamp|$ip|$user|$port" >> "$RECENT_CONNECTIONS"
+    
+    # Mantém apenas as últimas 20 conexões
+    if [[ -f "$RECENT_CONNECTIONS" ]]; then
+        tail -n 20 "$RECENT_CONNECTIONS" > "${RECENT_CONNECTIONS}.tmp"
+        mv "${RECENT_CONNECTIONS}.tmp" "$RECENT_CONNECTIONS"
+    fi
+}
 
 # Função para listar chaves SSH disponíveis (busca recursiva)
 list_ssh_keys() {
@@ -83,8 +176,34 @@ ssh_connect() {
     echo "🔗 Conectar via SSH"
     echo "=================="
     
-    # Coleta informações
-    host=$(gum input --placeholder "Digite o host/IP (ex: 192.168.1.100)")
+    # Mostra sugestões de hosts
+    local suggestions=()
+    while IFS= read -r line; do
+        suggestions+=("$line")
+    done < <(suggest_hosts)
+    
+    if [[ ${#suggestions[@]} -gt 0 ]]; then
+        echo "💭 Sugestões baseadas no histórico:"
+        use_suggestion=$(gum confirm "Ver sugestões de hosts?" && echo "yes" || echo "no")
+        
+        if [[ "$use_suggestion" == "yes" ]]; then
+            suggestions+=("\ud83d\udcdd Digitar manualmente")
+            selected_host=$(printf '%s\n' "${suggestions[@]}" | gum choose --header="Selecione um host ou digite manualmente")
+            
+            if [[ "$selected_host" == "📝 Digitar manualmente" ]] || [[ -z "$selected_host" ]]; then
+                host=$(gum input --placeholder "Digite o host/IP (ex: 192.168.1.100)")
+            else
+                # Extrai o IP da sugestão
+                host=$(echo "$selected_host" | awk '{print $1}')
+                echo "🎥 Host selecionado: $host"
+            fi
+        else
+            host=$(gum input --placeholder "Digite o host/IP (ex: 192.168.1.100)")
+        fi
+    else
+        host=$(gum input --placeholder "Digite o host/IP (ex: 192.168.1.100)")
+    fi
+    
     [[ -z "$host" ]] && return 0
     
     user=$(gum input --placeholder "Digite o usuário (padrão: $(whoami))" --value "$(whoami)")
@@ -101,7 +220,7 @@ ssh_connect() {
             key_paths=()
             
             # Busca recursiva por chaves privadas
-            while IFS= read -r -d '' key; do
+            while IFS= read -r key; do
                 if [ -f "$key" ] && [ -f "${key}.pub" ]; then
                     relative_path="${key#$HOME/.ssh/}"
                     if [[ "$relative_path" == *"/"* ]]; then
@@ -113,7 +232,7 @@ ssh_connect() {
                     keys+=("$display_name")
                     key_paths+=("$key")
                 fi
-            done < <(find "$HOME/.ssh" -type f ! -name "*.pub" ! -name "known_hosts*" ! -name "config*" ! -name "authorized_keys*" -print0)
+            done < <(find "$HOME/.ssh" -type f ! -name "*.pub" ! -name "known_hosts*" ! -name "config*" ! -name "authorized_keys*")
             
             if [ ${#keys[@]} -gt 0 ]; then
                 echo "🔑 Chaves disponíveis:"
@@ -154,20 +273,32 @@ ssh_connect() {
     if gum confirm "Salvar esta configuração para uso futuro?"; then
         connection_name=$(gum input --placeholder "Nome para esta conexão")
         if [ -n "$connection_name" ]; then
-            echo "$connection_name|$user|$host|$port|$key_path" >> "$CONFIG_FILE"
-            echo "✅ Configuração salva!"
+            # Salva apenas a linha de configuração, sem output adicional
+            printf "%s|%s|%s|%s|%s\n" "$connection_name" "$user" "$host" "$port" "$key_path" >> "$CONFIG_FILE"
+            echo "✅ Configuração salva como: $connection_name"
         fi
     fi
     
-    # Executa a conexão
-    eval "$ssh_cmd"
+    # Registra conexão no histórico
+    register_recent_connection "$host" "$user" "$port"
+    
+    # Executa a conexão SSH interativa
+    $ssh_cmd
+    ssh_exit_code=$?
+    
+    if [ $ssh_exit_code -eq 0 ]; then
+        echo "\n✅ Conexão SSH finalizada com sucesso"
+    else
+        echo "\n❌ Conexão SSH finalizada com erro (código: $ssh_exit_code)"
+    fi
 }
 
 # Função para usar conexão salva
 use_saved_connection() {
     if [ ! -f "$CONFIG_FILE" ] || [ ! -s "$CONFIG_FILE" ]; then
         echo "❌ Nenhuma conexão salva encontrada"
-        return 0
+        echo "💡 Use 'Conectar via SSH' para criar uma nova conexão"
+        return 1
     fi
     
     echo "📋 Conexões salvas:"
@@ -176,44 +307,105 @@ use_saved_connection() {
     # Prepara lista para gum
     connections=()
     while IFS='|' read -r name user host port key_path; do
+        # Pula linhas vazias
+        [[ -z "$name" ]] && continue
+        
         display_text="$name ($user@$host:$port)"
-        if [ -n "$key_path" ]; then
+        if [ -n "$key_path" ] && [ "$key_path" != "" ]; then
             display_text="$display_text [🔑 $(basename "$key_path")]"
         fi
         connections+=("$display_text")
     done < "$CONFIG_FILE"
     
     if [ ${#connections[@]} -eq 0 ]; then
-        echo "❌ Nenhuma conexão válida encontrada"
-        return 0
+        echo "❌ Nenhuma conexão válida encontrada no arquivo"
+        echo "💡 Verifique o arquivo: $CONFIG_FILE"
+        return 1
     fi
     
+    echo "🔗 Selecione uma conexão:"
     selected=$(gum choose "${connections[@]}")
-    [[ -z "$selected" ]] && return 0
+    [[ -z "$selected" ]] && return 1
     
-    # Extrai o nome da conexão selecionada
-    connection_name=$(echo "$selected" | cut -d'(' -f1 | xargs)
+    # Extrai o nome da conexão selecionada (antes do primeiro parênteses)
+    connection_name=$(echo "$selected" | sed 's/ (.*$//' | xargs)
+    
+    echo "🔍 Procurando configuração para: '$connection_name'"
     
     # Busca a configuração correspondente
+    found=false
+    found_user=""
+    found_host=""
+    found_port=""
+    found_key_path=""
+    found_name=""
+    
     while IFS='|' read -r name user host port key_path; do
+        # Pula linhas vazias
+        [[ -z "$name" ]] && continue
+        
         if [ "$name" = "$connection_name" ]; then
-            ssh_cmd="ssh"
-            
-            if [ -n "$key_path" ]; then
-                ssh_cmd="$ssh_cmd -i $key_path"
-            fi
-            
-            if [ "$port" != "22" ]; then
-                ssh_cmd="$ssh_cmd -p $port"
-            fi
-            
-            ssh_cmd="$ssh_cmd $user@$host"
-            
-            echo "🚀 Conectando: $ssh_cmd"
-            eval "$ssh_cmd"
-            return 0
+            found=true
+            found_name="$name"
+            found_user="$user"
+            found_host="$host"
+            found_port="$port"
+            found_key_path="$key_path"
+            break
         fi
     done < "$CONFIG_FILE"
+    
+    if [ "$found" = false ]; then
+        echo "❌ Configuração não encontrada para: '$connection_name'"
+        echo "💡 Verifique se o nome está correto no arquivo: $CONFIG_FILE"
+        return 1
+    fi
+    
+    # Agora que encontramos a configuração, processamos fora do loop
+    echo "✅ Configuração encontrada!"
+    echo "   Nome: $found_name"
+    echo "   Usuário: $found_user"
+    echo "   Host: $found_host"
+    echo "   Porta: $found_port"
+    if [ -n "$found_key_path" ] && [ "$found_key_path" != "" ]; then
+        echo "   Chave: $found_key_path"
+    fi
+    echo
+    
+    # Valida se a chave existe
+    if [ -n "$found_key_path" ] && [ "$found_key_path" != "" ] && [ ! -f "$found_key_path" ]; then
+        echo "⚠️  Chave SSH não encontrada: $found_key_path"
+        echo "🔍 Chaves disponíveis em ~/.ssh/:"
+        find "$HOME/.ssh" -name "*.pem" -o -name "id_*" ! -name "*.pub" 2>/dev/null | head -5
+        echo "💭 Conectando sem chave específica..."
+        found_key_path=""
+    fi
+    
+    # Monta o comando SSH
+    ssh_cmd="ssh"
+    
+    if [ -n "$found_key_path" ] && [ "$found_key_path" != "" ]; then
+        ssh_cmd="$ssh_cmd -i $found_key_path"
+    fi
+    
+    if [ "$found_port" != "22" ] && [ -n "$found_port" ]; then
+        ssh_cmd="$ssh_cmd -p $found_port"
+    fi
+    
+    ssh_cmd="$ssh_cmd $found_user@$found_host"
+    
+    echo "🚀 Executando: $ssh_cmd"
+    echo "========================"
+    
+    # Executa a conexão SSH interativa (FORA DO LOOP)
+    $ssh_cmd
+    ssh_exit_code=$?
+    
+    if [ $ssh_exit_code -eq 0 ]; then
+        echo "✅ Conexão SSH finalizada com sucesso"
+    else
+        echo "❌ Conexão SSH finalizada com erro (código: $ssh_exit_code)"
+    fi
 }
 
 # Função para copiar arquivos via SCP/RSYNC
@@ -472,7 +664,7 @@ manage_ssh_keys() {
         key_paths=()
         
         # Busca recursiva por chaves públicas
-        while IFS= read -r -d '' key; do
+        while IFS= read -r key; do
             if [ -f "$key" ]; then
                 relative_path="${key#$HOME/.ssh/}"
                 if [[ "$relative_path" == *"/"* ]]; then
@@ -484,7 +676,7 @@ manage_ssh_keys() {
                 keys+=("$display_name")
                 key_paths+=("$key")
             fi
-        done < <(find "$HOME/.ssh" -name "*.pub" -type f -print0)
+        done < <(find "$HOME/.ssh" -name "*.pub" -type f)
         
         if [ ${#keys[@]} -eq 0 ]; then
             echo "❌ Nenhuma chave pública encontrada"

@@ -251,6 +251,77 @@ offload_directory() {
     read -r
 }
 
+# Browse and select symlinks to restore
+browse_symlinks_to_restore() {
+    echo -e "${BOLD}🔗 Navigate and Restore Symlinks${NC}"
+    echo
+    
+    local current_dir="${1:-$HOME}"
+    local title="Select symlinked directory to restore"
+    
+    while true; do
+        echo -e "${BOLD}Current path:${NC} $current_dir"
+        echo
+        
+        local items=()
+        items+=("📁 .. (Parent Directory)")
+        items+=("🔙 Return to menu")
+        items+=("---")
+        
+        # Add subdirectories and symlinks
+        if [[ -d "$current_dir" ]]; then
+            while IFS= read -r item; do
+                local full_path="$current_dir/$item"
+                if [[ -L "$full_path" ]]; then
+                    local target
+                    target=$(readlink "$full_path")
+                    local size
+                    size=$(get_directory_size "$target" 2>/dev/null || echo "?")
+                    local status="✅ Active"
+                    if [[ ! -e "$target" ]]; then
+                        status="❌ Broken"
+                    fi
+                    items+=("🔗 $item -> $(basename "$target") [$size] ($status)")
+                elif [[ -d "$full_path" ]]; then
+                    local size
+                    size=$(du -sh "$full_path" 2>/dev/null | cut -f1 || echo "?")
+                    items+=("📁 $item ($size)")
+                fi
+            done < <(ls -1 "$current_dir" 2>/dev/null | head -n 30)
+        fi
+        
+        local selection
+        selection=$(printf '%s\n' "${items[@]}" | gum choose --header="$title" --height=20)
+        
+        case "$selection" in
+            "📁 .. (Parent Directory)")
+                current_dir=$(dirname "$current_dir")
+                ;;
+            "🔙 Return to menu")
+                return 1
+                ;;
+            "---")
+                continue
+                ;;
+            🔗*)
+                local item_name
+                item_name=$(echo "$selection" | sed 's/🔗 //' | sed 's/ ->.*//')
+                local symlink_path="$current_dir/$item_name"
+                restore_symlink_with_destination_choice "$symlink_path"
+                return $?
+                ;;
+            📁*)
+                local dir_name
+                dir_name=$(echo "$selection" | sed 's/📁 //' | sed 's/ (.*)//')
+                current_dir="$current_dir/$dir_name"
+                ;;
+            "")
+                return 1
+                ;;
+        esac
+    done
+}
+
 # List active symlinks
 list_symlinks() {
     echo -e "${BOLD}🔗 Active Symlinks${NC}"
@@ -340,7 +411,150 @@ manage_symlink() {
     esac
 }
 
-# Restore symlink to internal drive
+# Restore symlink with destination choice
+restore_symlink_with_destination_choice() {
+    local source="$1"
+    local target
+    target=$(readlink "$source")
+    
+    echo -e "${BOLD}🔄 Restore Symlink${NC}"
+    echo
+    
+    if [[ ! -e "$target" ]]; then
+        log_error "Target directory not found: $target"
+        return 1
+    fi
+    
+    local size
+    size=$(get_directory_size "$target")
+    
+    echo -e "${BOLD}Symlink Details:${NC}"
+    echo -e "  ${BOLD}Symlink:${NC} $source"
+    echo -e "  ${BOLD}Current Target:${NC} $target"
+    echo -e "  ${BOLD}Size:${NC} $size"
+    echo
+    
+    # Step 1: Choose restoration method
+    local restore_options=(
+        "🏠 Restore to original location (replace symlink)"
+        "📁 Choose custom destination directory"
+        "💾 Move to different drive"
+        "❌ Cancel"
+    )
+    
+    local restore_choice
+    restore_choice=$(printf '%s\n' "${restore_options[@]}" | gum choose --header="How would you like to restore this symlink?")
+    
+    local final_destination="$source"
+    
+    case "$restore_choice" in
+        "🏠 Restore to original"*)
+            # Keep original destination
+            ;;
+        "📁 Choose custom"*)
+            log_info "Select custom destination directory..."
+            if ! final_destination=$(browse_directory "$(dirname "$source")" "Select destination for restored files"); then
+                log_warn "Restore cancelled"
+                return 1
+            fi
+            final_destination="$final_destination/$(basename "$source")"
+            ;;
+        "💾 Move to different"*)
+            log_info "Select destination drive..."
+            local external_drives
+            mapfile -t external_drives < <(detect_external_drives)
+            
+            # Add internal drive options
+            external_drives+=("$HOME (Home Directory)")
+            external_drives+=("/ (Root - System Drive)")
+            
+            if [[ ${#external_drives[@]} -eq 0 ]]; then
+                log_error "No drives detected"
+                return 1
+            fi
+            
+            local dest_drive
+            dest_drive=$(printf '%s\n' "${external_drives[@]}" | gum choose --header="Select destination drive")
+            
+            if [[ -z "$dest_drive" ]]; then
+                log_warn "No drive selected"
+                return 1
+            fi
+            
+            # Extract drive path
+            local drive_path
+            if [[ "$dest_drive" == "$HOME"* ]]; then
+                drive_path="$HOME"
+            elif [[ "$dest_drive" == "/"* ]]; then
+                drive_path="/"
+            else
+                drive_path=$(echo "$dest_drive" | sed 's/ (.*//')
+            fi
+            
+            # Choose subfolder in selected drive
+            if ! drive_path=$(browse_directory "$drive_path" "Select folder in destination drive"); then
+                log_warn "Restore cancelled"
+                return 1
+            fi
+            
+            final_destination="$drive_path/$(basename "$source")"
+            ;;
+        *)
+            log_warn "Restore cancelled"
+            return 1
+            ;;
+    esac
+    
+    # Step 2: Show summary and confirm
+    echo
+    echo -e "${BOLD}📋 Restore Summary:${NC}"
+    echo -e "  ${BOLD}From:${NC} $target"
+    echo -e "  ${BOLD}To:${NC} $final_destination"
+    echo -e "  ${BOLD}Size:${NC} $size"
+    echo -e "  ${BOLD}Action:${NC} Remove symlink and move files to destination"
+    echo
+    
+    if [[ -e "$final_destination" ]]; then
+        log_warn "Destination already exists: $final_destination"
+        if ! gum confirm "Overwrite existing destination?"; then
+            log_warn "Restore cancelled"
+            return 1
+        fi
+    fi
+    
+    if ! gum confirm "Proceed with restore?"; then
+        log_warn "Restore cancelled"
+        return 1
+    fi
+    
+    # Step 3: Execute restore
+    log_info "Removing symlink..."
+    rm "$source"
+    
+    # Create destination directory if needed
+    if [[ "$final_destination" != "$source" ]]; then
+        mkdir -p "$(dirname "$final_destination")"
+    fi
+    
+    log_info "Moving files to destination..."
+    if ! mv "$target" "$final_destination"; then
+        log_error "Failed to move files to destination"
+        # Try to recreate symlink
+        ln -s "$target" "$source" || true
+        return 1
+    fi
+    
+    # Remove from database
+    sed -i.bak "\\|,$source,|d" "$SYMLINK_DB"
+    
+    log_success "Symlink restored successfully!"
+    log_info "Files moved to: $final_destination"
+    echo
+    echo -e "${CYAN}Press Enter to continue...${NC}"
+    read -r
+}
+
+# Restore symlink to internal drive (legacy function for compatibility)
 restore_symlink() {
     local source="$1"
     local target="$2"
@@ -478,18 +692,20 @@ show_main_menu() {
     local menu_options=(
         "📤 Offload directory to external drive"
         "🔗 List active symlinks"
+        "🔄 Navigate and restore symlinks"
         "❓ Help & Tips"
         "🚪 Quit"
     )
     
     local selection
-    selection=$(printf '%s\\n' "${menu_options[@]}" | gum choose --header="Symlink Manager v${VERSION} - Select an option" --height=15)
+    selection=$(printf '%s\n' "${menu_options[@]}" | gum choose --header="Symlink Manager v${VERSION} - Select an option" --height=15)
     
     case "$selection" in
         "📤 Offload directory"*) echo "1" ;;
         "🔗 List active symlinks"*) echo "2" ;;
-        "❓ Help & Tips"*) echo "3" ;;
-        "🚪 Quit"*) echo "4" ;;
+        "🔄 Navigate and restore"*) echo "3" ;;
+        "❓ Help & Tips"*) echo "4" ;;
+        "🚪 Quit"*) echo "5" ;;
         *) echo "q" ;;
     esac
 }
@@ -505,8 +721,9 @@ main_loop() {
         case "$choice" in
             1) offload_directory ;;
             2) list_symlinks ;;
-            3) show_help ;;
-            4|q|Q) 
+            3) browse_symlinks_to_restore ;;
+            4) show_help ;;
+            5|q|Q) 
                 echo
                 echo -e "${CYAN}Thank you for using Symlink Manager! 🙏${NC}"
                 echo -e "${GREEN}Keep your Mac storage optimized! ✨${NC}"

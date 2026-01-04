@@ -23,6 +23,8 @@ deb: clean
 	# Copy source files
 	cp -r devops-toolkit $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/
 	cp -r Django $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/
+	cp -r Redes $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/
+	cp -r Storage $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/
 	cp README.md $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/
 	
 	# Create debian control structure
@@ -75,7 +77,13 @@ install:
 	sudo mkdir -p /opt/devops-toolkit
 	sudo cp -r devops-toolkit/* /opt/devops-toolkit/
 	sudo cp -r Django /opt/devops-toolkit/
+	sudo mkdir -p /opt/devops-toolkit/bin/scripts/network
+	sudo cp -r Redes/* /opt/devops-toolkit/bin/scripts/network/
+	sudo mkdir -p /opt/devops-toolkit/bin/scripts/storage
+	sudo cp -r Storage/* /opt/devops-toolkit/bin/scripts/storage/
 	sudo chmod +x /opt/devops-toolkit/bin/scripts/*.sh
+	sudo chmod +x /opt/devops-toolkit/bin/scripts/network/*.sh
+	sudo chmod +x /opt/devops-toolkit/bin/scripts/storage/*.sh
 	bash packaging/debian/postinst
 
 # Uninstall local installation
@@ -107,17 +115,27 @@ docker:
 
 # Show help
 help:
-	@echo "DevOps Toolkit Build System"
+	@echo "DevOps Toolkit Build System v1.1.0"
+	@echo "=================================="
 	@echo ""
-	@echo "Available targets:"
+	@echo "🎯 Quick Commands:"
+	@echo "  install     - Install for development (includes network + storage tools)"
+	@echo "  test        - Run all tests"
+	@echo "  clean       - Clean build directory"
+	@echo ""
+	@echo "📦 Package Building:"
 	@echo "  all         - Build all packages (deb, rpm, homebrew)"
-	@echo "  deb         - Build Debian package"
+	@echo "  deb         - Build Debian package with network tools"
 	@echo "  rpm         - Build RPM package"
 	@echo "  homebrew    - Generate Homebrew formula"
-	@echo "  install     - Install locally for development"
-	@echo "  uninstall   - Remove local installation"
-	@echo "  test        - Run tests"
+	@echo ""
+	@echo "🔧 Development:"
+	@echo "  docker      - Build Docker image for testing"
 	@echo "  release     - Create release tarball"
-	@echo "  docker      - Build Docker image"
-	@echo "  clean       - Clean build directory"
-	@echo "  help        - Show this help"
+	@echo "  uninstall   - Remove development installation"
+	@echo ""
+	@echo "📋 Components included:"
+	@echo "  - Network tools: ssh-manager, network-config-checker"
+	@echo "  - Storage tools: mac-storage-manager, symlink-manager" 
+	@echo "  - Django toolkit: multi-template project generator"
+	@echo "  - System utilities: PHP switcher, download manager"
