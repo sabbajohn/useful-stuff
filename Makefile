@@ -21,6 +21,7 @@ deb: clean
 	mkdir -p $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)
 	
 	# Copy source files
+	cp devops-toolkit.sh $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/
 	cp -r devops-toolkit $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/
 	cp -r Django $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/
 	cp -r Redes $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/
@@ -75,6 +76,8 @@ homebrew:
 # Install locally for development
 install:
 	sudo mkdir -p /opt/devops-toolkit
+	sudo cp devops-toolkit.sh /opt/devops-toolkit/
+	sudo chmod +x /opt/devops-toolkit/devops-toolkit.sh
 	sudo cp -r devops-toolkit/* /opt/devops-toolkit/
 	sudo cp -r Django /opt/devops-toolkit/
 	sudo mkdir -p /opt/devops-toolkit/bin/scripts/network
@@ -84,6 +87,7 @@ install:
 	sudo chmod +x /opt/devops-toolkit/bin/scripts/*.sh
 	sudo chmod +x /opt/devops-toolkit/bin/scripts/network/*.sh
 	sudo chmod +x /opt/devops-toolkit/bin/scripts/storage/*.sh
+	sudo ln -sf /opt/devops-toolkit/devops-toolkit.sh /usr/local/bin/devops
 	bash packaging/debian/postinst
 
 # Uninstall local installation

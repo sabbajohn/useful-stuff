@@ -23,6 +23,17 @@ Professional development and system administration toolkit with networking, SSH 
 
 ## 📦 Quick Start
 
+### 🎯 Painel Principal Unificado
+```bash
+# Clone e execute o painel principal  
+git clone <repository-url>
+cd Scripts
+./devops-toolkit.sh
+
+# Ou após instalação:
+devops
+```
+
 ### Development Installation
 ```bash
 # Clone and install for development

@@ -69,6 +69,14 @@ install_user() {
     echo "📁 Copiando scripts principais..."
     cp -r devops-toolkit/* "$install_dir/"
     
+    # Copia arquivos
+    echo "📁 Copiando painel principal..."
+    cp devops-toolkit.sh "$install_dir/"
+    chmod +x "$install_dir/devops-toolkit.sh"
+    
+    echo "📁 Copiando scripts principais..."
+    cp -r devops-toolkit/* "$install_dir/"
+    
     echo "📁 Copiando scripts de rede..."
     cp Redes/*.sh "$install_dir/bin/scripts/network/"
     
@@ -83,10 +91,11 @@ install_user() {
     chmod +x "$install_dir/bin/scripts/network"/*.sh
     chmod +x "$install_dir/bin/scripts/storage"/*.sh
     
-    # Adiciona ao PATH se não estiver
+    # Adiciona alias para o painel principal
     local bashrc="$HOME/.bashrc"
     local zshrc="$HOME/.zshrc"
     local path_line='export PATH="$HOME/.local/bin/devops-toolkit/bin/scripts:$PATH"'
+    local alias_line='alias devops="$HOME/.local/bin/devops-toolkit/devops-toolkit.sh"'
     
     for rc_file in "$bashrc" "$zshrc"; do
         if [[ -f "$rc_file" ]] && ! grep -q "devops-toolkit" "$rc_file"; then
@@ -94,10 +103,12 @@ install_user() {
             echo "" >> "$rc_file"
             echo "# DevOps Toolkit" >> "$rc_file"
             echo "$path_line" >> "$rc_file"
+            echo "$alias_line" >> "$rc_file"
         fi
     done
     
     echo "✅ Instalação local concluída em: $install_dir"
+    echo "🎯 Execute: devops (ou $install_dir/devops-toolkit.sh)"
     echo "💡 Reinicie o terminal ou execute: source ~/.zshrc"
 }
 
@@ -122,6 +133,14 @@ install_system() {
     echo "📁 Copiando scripts principais..."
     cp -r devops-toolkit/* "$install_dir/"
     
+    # Copia arquivos
+    echo "📁 Copiando painel principal..."
+    cp devops-toolkit.sh "$install_dir/"
+    chmod +x "$install_dir/devops-toolkit.sh"
+    
+    echo "📁 Copiando scripts principais..."
+    cp -r devops-toolkit/* "$install_dir/"
+    
     echo "📁 Copiando scripts de rede..."
     cp Redes/*.sh "$install_dir/bin/scripts/network/"
     
@@ -140,6 +159,9 @@ install_system() {
     echo "🔗 Criando links simbólicos..."
     local bin_dir="/usr/local/bin"
     
+    # Link principal para o painel
+    ln -sf "$install_dir/devops-toolkit.sh" "$bin_dir/devops"
+    
     # Scripts principais
     for script in "$install_dir/bin/scripts/network"/*.sh; do
         local script_name=$(basename "$script" .sh)
@@ -152,7 +174,8 @@ install_system() {
     done
     
     echo "✅ Instalação do sistema concluída em: $install_dir"
-    echo "✅ Scripts disponíveis globalmente via: ssh-manager, network-config-checker, etc."
+    echo "🎯 Execute: devops (painel principal)"
+    echo "✅ Scripts individuais também disponíveis: ssh-manager, network-config-checker, etc."
 }
 
 # Menu principal
