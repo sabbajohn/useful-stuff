@@ -547,16 +547,35 @@ mount_sshfs() {
             sshfs_cmd="$sshfs_cmd -o IdentityFile=$key_path"
         fi
         
-        # Opções adicionais
-        sshfs_cmd="$sshfs_cmd -o allow_other,defer_permissions"
+        # Opções adicionais baseadas no sistema operacional
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            # macOS - usa macFUSE
+            sshfs_cmd="$sshfs_cmd -o allow_other,defer_permissions"
+        else
+            # Linux - usa FUSE
+            sshfs_cmd="$sshfs_cmd -o allow_other,reconnect"
+        fi
         
         echo "🚀 Executando: $sshfs_cmd"
         eval "$sshfs_cmd"
         
         if [ $? -eq 0 ]; then
             echo "✅ Diretório montado com sucesso em: $local_mount"
+            echo "💡 Para desmontar: fusermount -u $local_mount (Linux) ou umount $local_mount (macOS)"
         else
             echo "❌ Erro ao montar diretório"
+            echo ""
+            echo "💡 Possíveis soluções:"
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                echo "   • Instale macFUSE: brew install --cask macfuse"
+                echo "   • Instale sshfs: brew install gromgit/fuse/sshfs-mac"
+            else
+                echo "   • Instale sshfs: sudo apt install sshfs (Ubuntu/Debian)"
+                echo "   • Verifique se o usuário está no grupo 'fuse': sudo usermod -a -G fuse $USER"
+                echo "   • Tente sem allow_other: remova a opção -o allow_other"
+            fi
+            echo "   • Verifique se o servidor SSH está acessível: ssh $user@$host"
+            echo "   • Crie o diretório local se necessário: mkdir -p $local_mount"
         fi
         ;;
         
