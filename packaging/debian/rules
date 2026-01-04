@@ -28,8 +28,11 @@ binary-indep: build
 	# Copy documentation
 	cp README.md $(DESTDIR)/usr/share/doc/devops-toolkit/
 	
-	# Copy control files - extract only binary package section
-	sed -n '/^Package:/,$$p' debian/control > $(DESTDIR)/DEBIAN/control
+	# Copy control files - create proper binary control file
+	echo "Package: devops-toolkit" > $(DESTDIR)/DEBIAN/control
+	echo "Version: 1.1.0" >> $(DESTDIR)/DEBIAN/control
+	grep "^Maintainer:" debian/control >> $(DESTDIR)/DEBIAN/control
+	sed -n '/^Package:/,$$p' debian/control | grep -v "^Package:" >> $(DESTDIR)/DEBIAN/control
 	cp debian/postinst $(DESTDIR)/DEBIAN/postinst
 	cp debian/prerm $(DESTDIR)/DEBIAN/prerm
 	chmod 755 $(DESTDIR)/DEBIAN/postinst
