@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: John Sabba <johnsabba@example.com>
 Standards-Version: 3.9.6
 Homepage: https://github.com/sabbajohn/useful-stuff
-version: 1.1.0
+
 Package: devops-toolkit
 Architecture: all
 Depends: bash (>= 4.0), curl, git, docker.io | docker-ce, python3, php-cli, gum, arp-scan
@@ -21,3 +21,4 @@ Description: DevOps Toolkit - Collection of development and deployment scripts
  This toolkit helps developers and DevOps engineers automate common tasks
  and streamline their development workflow. Features interactive menus,
  network device discovery, MAC address detection, and advanced SSH management.
+
