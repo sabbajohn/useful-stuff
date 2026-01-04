@@ -1,0 +1,24 @@
+#!/bin/bash
+# Post installation script
+
+set -e
+
+# Create symlinks for main commands
+ln -sf /opt/devops-toolkit/bin/scripts/django-project-creator-v3.sh /usr/local/bin/django-creator
+ln -sf /opt/devops-toolkit/bin/scripts/php-switcher.sh /usr/local/bin/php-switcher
+ln -sf /opt/devops-toolkit/bin/scripts/download-manager.sh /usr/local/bin/download-manager
+ln -sf /opt/devops-toolkit/bin/scripts/laravel-start.sh /usr/local/bin/laravel-start
+ln -sf /opt/devops-toolkit/bin/scripts/mac-storage-manager.sh /usr/local/bin/storage-manager
+ln -sf /opt/devops-toolkit/bin/scripts/quick-dns-fix.sh /usr/local/bin/dns-fix
+
+# Set permissions
+chmod +x /opt/devops-toolkit/bin/scripts/*.sh
+
+echo "DevOps Toolkit installed successfully!"
+echo "Available commands:"
+echo "  django-creator   - Create Django projects"
+echo "  php-switcher     - Switch PHP versions"
+echo "  download-manager - Download manager utility"
+echo "  laravel-start    - Laravel project starter"
+echo "  storage-manager  - Storage management (macOS)"
+echo "  dns-fix          - Quick DNS troubleshooting"

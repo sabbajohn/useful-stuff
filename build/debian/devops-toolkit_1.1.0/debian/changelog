@@ -1,0 +1,24 @@
+devops-toolkit (1.1.0) unstable; urgency=medium
+
+  * Enhanced Django project creator with multiple template options
+  * Added advanced network troubleshooting and scanning tools  
+  * Improved SSH connection manager with device discovery
+  * Added storage management utilities with symlink support
+  * Enhanced download manager functionality
+  * Added Laravel starter scripts
+  * Interactive menus for better user experience
+  * MAC address detection capabilities
+  * Advanced SSH management features
+
+ -- John Sabba <johnsabba@example.com>  Sat, 04 Jan 2026 12:00:00 +0000
+
+devops-toolkit (1.0.0) unstable; urgency=low
+
+  * Initial release of DevOps Toolkit
+  * Basic Django project creator
+  * PHP version switcher
+  * Network troubleshooting tools
+  * SSH manager
+  * Storage utilities
+
+ -- John Sabba <johnsabba@example.com>  Mon, 01 Jan 2026 12:00:00 +0000
