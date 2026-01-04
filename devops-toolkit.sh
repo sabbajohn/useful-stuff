@@ -8,13 +8,47 @@ set -e
 # Verifica se gum está instalado
 if ! command -v gum &>/dev/null; then
     echo "❌ gum não está instalado. Instale primeiro:"
-    echo "   macOS: brew install gum"
-    echo "   Linux: https://github.com/charmbracelet/gum#installation"
+    echo ""
+    echo "📦 Ubuntu/Debian:"
+    echo "   sudo mkdir -p /etc/apt/keyrings"
+    echo "   curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg"
+    echo "   echo \"deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *\" | sudo tee /etc/apt/sources.list.d/charm.list"
+    echo "   sudo apt update && sudo apt install gum"
+    echo ""
+    echo "📦 macOS:"
+    echo "   brew install gum"
+    echo ""
+    echo "📦 Manual (Linux):"
+    echo "   wget https://github.com/charmbracelet/gum/releases/download/v0.14.1/gum_0.14.1_amd64.deb"
+    echo "   sudo dpkg -i gum_0.14.1_amd64.deb"
+    echo ""
+    echo "💡 Ou use o script de instalação: ./dev-install.sh"
     exit 1
 fi
 
 # Detecta o diretório base dos scripts
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Debug mode (uncomment for troubleshooting)
+# set -x
+
+# Verifica se os diretórios principais existem
+check_directories() {
+    local missing_dirs=()
+    for dir in "Redes" "Storage" "Django"; do
+        if [[ ! -d "$SCRIPT_DIR/$dir" ]]; then
+            missing_dirs+=("$dir")
+        fi
+    done
+    
+    if [[ ${#missing_dirs[@]} -gt 0 ]]; then
+        echo "⚠️  Diretórios em falta: ${missing_dirs[*]}"
+        echo "📍 Localização atual: $SCRIPT_DIR"
+        echo "💡 Certifique-se de estar executando do diretório correto"
+        return 1
+    fi
+    return 0
+}
 
 # Cores e estilos
 export GUM_CHOOSE_CURSOR_FOREGROUND="212"
@@ -285,4 +319,6 @@ main_menu() {
 }
 
 # Execução principal
+echo "🔧 Iniciando DevOps Toolkit..."
+check_directories || exit 1
 main_menu
