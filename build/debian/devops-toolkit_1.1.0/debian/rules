@@ -28,8 +28,8 @@ binary-indep: build
 	# Copy documentation
 	cp README.md $(DESTDIR)/usr/share/doc/devops-toolkit/
 	
-	# Copy control files - extract only binary package section
-	sed -n '/^Package:/,$p' debian/control > $(DESTDIR)/DEBIAN/control
+	# Copy control files
+	cp debian/control $(DESTDIR)/DEBIAN/control
 	cp debian/postinst $(DESTDIR)/DEBIAN/postinst
 	cp debian/prerm $(DESTDIR)/DEBIAN/prerm
 	chmod 755 $(DESTDIR)/DEBIAN/postinst
