@@ -26,6 +26,8 @@ OLD_DAYS=90
 SNAPSHOT_FILE="/tmp/mac_storage_before_kb"
 TEMP_DIR="/tmp/mac_storage_$$"
 FZF_CMD=""
+DEBUG=0
+DISABLE_FZF=0
 
 # Logging functions
 log_info() { echo -e "${CYAN}[INFO]${NC} $1"; }
@@ -40,9 +42,41 @@ init_temp_dir() {
     trap 'rm -rf "$TEMP_DIR" 2>/dev/null || true' EXIT
 }
 
+# Check for dependencies
+check_dependencies() {
+    local missing_deps=()
+    
+    # Check for gum (interactive UI)
+    if ! command -v gum &>/dev/null; then
+        missing_deps+=("gum")
+    fi
+    
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then
+        echo -e "${YELLOW}⚠️  Missing dependencies detected:${NC}"
+        for dep in "${missing_deps[@]}"; do
+            echo -e "  ${RED}✗${NC} $dep"
+        done
+        echo
+        echo -e "${CYAN}To install on macOS:${NC}"
+        echo "  brew install gum"
+        echo
+        echo -e "${CYAN}To install on Linux:${NC}"
+        echo "  # Ubuntu/Debian:"
+        echo "  echo 'deb [trusted=yes] https://repo.charm.sh/apt/ /' | sudo tee /etc/apt/sources.list.d/charm.list"
+        echo "  sudo apt update && sudo apt install gum"
+        echo
+        echo "  # Or download binary from: https://github.com/charmbracelet/gum/releases"
+        echo
+        echo -e "${YELLOW}Note: Script will continue with basic functionality${NC}"
+        sleep 3
+        return 1
+    fi
+    return 0
+}
+
 # Check for fzf availability
 ensure_fzf() {
-    if [[ "${DISABLE_FZF:-}" = "1" ]]; then
+    if [[ "$DISABLE_FZF" = "1" ]]; then
         log_debug "fzf disabled via DISABLE_FZF"
         FZF_CMD=""
         return
@@ -145,7 +179,20 @@ show_disk_usage() {
     fi
 }
 
-# Storage snapshot for measuring space saved
+# Launch Symlink Manager
+launch_symlink_manager() {
+    local symlink_script="$(dirname "${BASH_SOURCE[0]}")/symlink-manager.sh"
+    
+    if [[ -f "$symlink_script" ]]; then
+        log_info "Launching Symlink Manager..."
+        "$symlink_script"
+    else
+        log_error "Symlink Manager not found at: $symlink_script"
+        echo -e "${YELLOW}The Symlink Manager is part of the DevOps Toolkit${NC}"
+        echo -e "${CYAN}Press Enter to continue...${NC}"
+        read -r
+    fi
+}
 snapshot_before() {
     local used_kb
     used_kb=$(df -k / | awk 'NR==2{print $3}') || used_kb=0
@@ -323,6 +370,17 @@ clean_xcode_data() {
 clean_docker() {
     if ! command -v docker >/dev/null 2>&1; then
         log_warn "Docker not installed"
+        echo -e "${CYAN}Press Enter to continue...${NC}"
+        read -r
+        return
+    fi
+    
+    # Check if Docker daemon is running
+    if ! docker info >/dev/null 2>&1; then
+        log_error "Docker daemon is not running"
+        echo -e "${YELLOW}Please start Docker Desktop and try again${NC}"
+        echo -e "${CYAN}Press Enter to continue...${NC}"
+        read -r
         return
     fi
     
@@ -331,18 +389,50 @@ clean_docker() {
     # Show current usage
     echo
     echo -e "${BOLD}Current Docker disk usage:${NC}"
-    docker system df 2>/dev/null || log_warn "Could not get Docker disk usage"
+    if ! docker system df 2>/dev/null; then
+        log_warn "Could not get Docker disk usage"
+    fi
+    echo
     
-    if confirm "Prune all Docker data (containers, images, volumes, networks)?" "N"; then
+    # Show what will be cleaned
+    echo -e "${BOLD}Docker cleanup will remove:${NC}"
+    echo "  • All stopped containers"
+    echo "  • All unused networks"
+    echo "  • All unused images (not just dangling ones)"
+    echo "  • All unused volumes"
+    echo "  • All build cache"
+    echo
+    
+    if confirm "Proceed with Docker cleanup?" "N"; then
         snapshot_before
-        docker system prune -af --volumes 2>/dev/null || true
-        log_success "Docker pruned"
+        echo
+        log_info "Cleaning Docker containers..."
+        docker container prune -f 2>/dev/null || log_warn "Failed to prune containers"
+        
+        log_info "Cleaning Docker images..."
+        docker image prune -af 2>/dev/null || log_warn "Failed to prune images"
+        
+        log_info "Cleaning Docker volumes..."
+        docker volume prune -f 2>/dev/null || log_warn "Failed to prune volumes"
+        
+        log_info "Cleaning Docker networks..."
+        docker network prune -f 2>/dev/null || log_warn "Failed to prune networks"
+        
+        log_info "Cleaning Docker build cache..."
+        docker builder prune -af 2>/dev/null || log_warn "Failed to prune build cache"
+        
+        log_success "Docker cleanup completed"
         
         echo
         echo -e "${BOLD}Docker disk usage after cleanup:${NC}"
-        docker system df 2>/dev/null || true
+        docker system df 2>/dev/null || log_warn "Could not get Docker disk usage"
         snapshot_after
+    else
+        log_info "Docker cleanup cancelled"
     fi
+    
+    echo -e "${CYAN}Press Enter to continue...${NC}"
+    read -r
 }
 
 # Node.js cleanup
@@ -613,13 +703,131 @@ manage_trash() {
 
 # Menu system
 show_header() {
-    clear
     echo -e "${BOLD}${BLUE}╔════════════════════════════════════════════════════╗${NC}"
     echo -e "${BOLD}${BLUE}║${NC}${BOLD}          Mac Storage Manager v${VERSION}              ${BLUE}║${NC}"
     echo -e "${BOLD}${BLUE}║${NC}${BOLD}              DevOps Toolkit                       ${BLUE}║${NC}"
     echo -e "${BOLD}${BLUE}╚════════════════════════════════════════════════════╝${NC}"
     
     show_disk_usage
+}
+
+# Interactive menu using gum (like port-checker)
+show_gum_menu() {
+    local menu_options=(
+        "📁 Find large files (${MIN_LARGE_SIZE_MB}MB+)"
+        "🕒 Find old files (${OLD_DAYS}+ days)"
+        "🧹 Clean user caches"
+        "🔨 Clean Xcode data"
+        "🐳 Docker cleanup"
+        "📦 Node.js cleanup"
+        "🍺 Package managers cleanup"
+        "🗃️  Git repositories optimization"
+        "👥 Find duplicate files"
+        "📝 Clean system logs"
+        "📱 iOS Simulators cleanup"
+        "🗑️  Manage trash"
+        "📊 Show disk usage analysis"
+        "🔗 Symlink Manager (Storage Expansion)"
+        "⚙️  Settings & Configuration"
+        "🔄 Refresh disk usage"
+        "❓ Show help & commands"
+        "🚪 Quit"
+    )
+    
+    local selection
+    selection=$(printf '%s\n' "${menu_options[@]}" | gum choose --header="Mac Storage Manager v${VERSION} - Select an option" --height=20)
+    
+    case "$selection" in
+        "📁 Find large files"*) echo "1" ;;
+        "🕒 Find old files"*) echo "2" ;;
+        "🧹 Clean user caches"*) echo "3" ;;
+        "🔨 Clean Xcode data"*) echo "4" ;;
+        "🐳 Docker cleanup"*) echo "5" ;;
+        "📦 Node.js cleanup"*) echo "6" ;;
+        "🍺 Package managers cleanup"*) echo "7" ;;
+        "🗃️  Git repositories optimization"*) echo "8" ;;
+        "👥 Find duplicate files"*) echo "9" ;;
+        "📝 Clean system logs"*) echo "10" ;;
+        "📱 iOS Simulators cleanup"*) echo "11" ;;
+        "🗑️  Manage trash"*) echo "12" ;;
+        "📊 Show disk usage analysis"*) echo "13" ;;
+        "🔗 Symlink Manager"*) echo "14" ;;
+        "⚙️  Settings & Configuration"*) echo "15" ;;
+        "🔄 Refresh disk usage"*) echo "16" ;;
+        "❓ Show help & commands"*) echo "17" ;;
+        "🚪 Quit"*) echo "18" ;;
+        *) echo "q" ;;
+    esac
+}
+
+# Fallback interactive menu with arrow key navigation
+show_interactive_menu() {
+    local menu_items=(
+        "📁 Find large files (${MIN_LARGE_SIZE_MB}MB+)"
+        "🕒 Find old files (${OLD_DAYS}+ days)"
+        "🧹 Clean user caches"
+        "🔨 Clean Xcode data"
+        "🐳 Docker cleanup"
+        "📦 Node.js cleanup"
+        "🍺 Package managers cleanup"
+        "🗃️  Git repositories optimization"
+        "👥 Find duplicate files"
+        "📝 Clean system logs"
+        "📱 iOS Simulators cleanup"
+        "🗑️  Manage trash"
+        "📊 Show disk usage analysis"
+        "⚙️  Settings & Configuration"
+        "🔄 Refresh disk usage"
+        "❓ Show help & commands"
+        "🚪 Quit"
+    )
+    
+    local current_item=0
+    local total_items=${#menu_items[@]}
+    
+    while true; do
+        # Clear from cursor to end of screen
+        tput ed
+        
+        echo
+        echo -e "${BOLD}Use ↑/↓ arrows to navigate, Enter to select:${NC}"
+        echo
+        
+        # Display menu items
+        for i in "${!menu_items[@]}"; do
+            if [[ $i -eq $current_item ]]; then
+                echo -e "${BOLD}${GREEN}▶ $(( i + 1 )). ${menu_items[$i]}${NC}"
+            else
+                echo -e "  $(( i + 1 )). ${menu_items[$i]}"
+            fi
+        done
+        
+        # Read single character
+        local key
+        read -rsn1 key
+        
+        case "$key" in
+            $'\e')  # Escape sequence
+                read -rsn2 key
+                case "$key" in
+                    '[A') # Up arrow
+                        ((current_item > 0)) && ((current_item--))
+                        ;;
+                    '[B') # Down arrow
+                        ((current_item < total_items - 1)) && ((current_item++))
+                        ;;
+                esac
+                ;;
+            '') # Enter
+                echo $((current_item + 1))
+                return 0
+                ;;
+            'q'|'Q') # Quick quit
+                echo "q"
+                return 0
+                ;;
+        esac
+    done
 }
 
 show_main_menu() {
@@ -643,41 +851,54 @@ show_main_menu() {
         "q) 🚪 Quit"
     )
     
-    if [[ -n "$FZF_CMD" ]] && command -v fzf >/dev/null 2>&1; then
+    # Check if gum is available for better UX
+    if command -v gum &>/dev/null && [[ "$DISABLE_FZF" != "1" ]]; then
+        show_gum_menu
+    elif [[ -z "$FZF_CMD" ]] || [[ "$DISABLE_FZF" == "1" ]]; then
+        show_interactive_menu
+    else
         local selection
         selection=$(printf '%s\n' "${menu_items[@]}" | \
             $FZF_CMD --header "Mac Storage Manager v${VERSION} - Select an option" \
                      --info=inline \
                      --prompt="Storage> " \
                      --pointer="▶" \
-                     --marker="✓" 2>/dev/null)
+                     --marker="✓" 2>/dev/null) || true
         
         if [[ -n "$selection" ]]; then
             local choice
             choice=$(echo "$selection" | cut -d')' -f1)
             echo "$choice"
         else
-            return 1
+            # If fzf selection is cancelled, use interactive menu
+            show_interactive_menu
         fi
-    else
-        echo
-        echo -e "${BOLD}Available options:${NC}"
-        printf '%s\n' "${menu_items[@]}"
-        echo
-        echo -e "${CYAN}Tip: Install fzf for enhanced interactive experience (brew install fzf)${NC}"
-        echo
-        read -r -p "Choose an option: " choice
-        echo "$choice"
     fi
 }
 
 # Main application loop
 main_loop() {
+    local first_run=true
     while true; do
+        if [[ "$first_run" == "true" ]]; then
+            clear
+            first_run=false
+        fi
+        
         show_header
+        echo
         
         local choice
         choice=$(show_main_menu)
+        local menu_status=$?
+        
+        # If menu selection fails, try to continue or exit gracefully
+        if [[ $menu_status -ne 0 ]] || [[ -z "$choice" ]]; then
+            log_warn "Menu selection failed or empty. Exiting..."
+            echo
+            echo -e "${CYAN}Thank you for using Mac Storage Manager! 🙏${NC}"
+            exit 0
+        fi
         
         case "$choice" in
             1) interactive_large_files ;;
@@ -701,20 +922,43 @@ main_loop() {
                 echo
                 log_info "Detailed disk usage analysis completed."
                 ;;
-            14) show_settings_menu ;;
-            r|R) continue ;;
-            h|H)
-                show_help
+            14) launch_symlink_manager ;;
+            15) show_settings_menu ;;
+            16) 
+                clear
+                continue 
                 ;;
-            q|Q) 
+            17)
+                clear
+                show_help
+                echo
+                echo -e "${CYAN}Press Enter to return to main menu...${NC}"
+                read -r
+                clear
+                ;;
+            18|q|Q) 
                 echo
                 echo -e "${CYAN}Thank you for using Mac Storage Manager! 🙏${NC}"
                 echo -e "${GREEN}Keep your Mac clean and optimized! ✨${NC}"
                 exit 0 
                 ;;
+            r|R) 
+                clear
+                continue 
+                ;;
+            h|H)
+                clear
+                show_help
+                echo
+                echo -e "${CYAN}Press Enter to return to main menu...${NC}"
+                read -r
+                clear
+                ;;
             *) 
                 log_warn "Invalid option: $choice"
-                sleep 1
+                echo -e "${CYAN}Press Enter to continue...${NC}"
+                read -r
+                clear
                 ;;
         esac
         
@@ -1110,6 +1354,7 @@ show_welcome() {
 # Main function
 main() {
     init_temp_dir
+    check_dependencies
     ensure_fzf
     
     # Handle command line arguments
