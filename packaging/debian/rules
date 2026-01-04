@@ -1,0 +1,48 @@
+#!/usr/bin/make -f
+
+# Simple rules file without debhelper dependencies
+DESTDIR := debian/devops-toolkit
+
+build:
+
+clean:
+	rm -rf $(DESTDIR)
+
+binary-indep: build
+	# Create package directory structure
+	mkdir -p $(DESTDIR)/usr/bin
+	mkdir -p $(DESTDIR)/usr/share/devops-toolkit
+	mkdir -p $(DESTDIR)/usr/share/doc/devops-toolkit
+	mkdir -p $(DESTDIR)/DEBIAN
+	
+	# Copy main script
+	cp devops-toolkit.sh $(DESTDIR)/usr/bin/devops-toolkit
+	chmod 755 $(DESTDIR)/usr/bin/devops-toolkit
+	
+	# Copy toolkit modules
+	cp -r devops-toolkit/* $(DESTDIR)/usr/share/devops-toolkit/
+	cp -r Django $(DESTDIR)/usr/share/devops-toolkit/
+	cp -r Redes $(DESTDIR)/usr/share/devops-toolkit/
+	cp -r Storage $(DESTDIR)/usr/share/devops-toolkit/
+	
+	# Copy documentation
+	cp README.md $(DESTDIR)/usr/share/doc/devops-toolkit/
+	
+	# Copy control files
+	cp debian/control $(DESTDIR)/DEBIAN/control
+	cp debian/postinst $(DESTDIR)/DEBIAN/postinst
+	cp debian/prerm $(DESTDIR)/DEBIAN/prerm
+	chmod 755 $(DESTDIR)/DEBIAN/postinst
+	chmod 755 $(DESTDIR)/DEBIAN/prerm
+	
+	# Set permissions
+	find $(DESTDIR) -type f -name "*.sh" -exec chmod 755 {} \;
+	
+	# Build package
+	dpkg-deb --build $(DESTDIR) ../devops-toolkit_1.1.0_all.deb
+
+binary-arch:
+
+binary: binary-indep binary-arch
+
+.PHONY: build clean binary-indep binary-arch binary

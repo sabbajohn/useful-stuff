@@ -2,7 +2,6 @@ Source: devops-toolkit
 Section: utils
 Priority: optional
 Maintainer: John Sabba <johnsabba@example.com>
-Build-Depends: debhelper (>= 9)
 Standards-Version: 3.9.6
 Homepage: https://github.com/sabbajohn/useful-stuff
 
