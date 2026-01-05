@@ -2,6 +2,12 @@
 
 Professional development and system administration toolkit with networking, SSH management, storage optimization, and Django project automation.
 
+<img width="465" height="228" alt="image" src="https://github.com/user-attachments/assets/ae5a176e-f9db-431e-b105-5627597c1f36" />
+<img width="593" height="334" alt="image" src="https://github.com/user-attachments/assets/cf1c2d72-11ce-428f-9f51-17da74536335" />
+<img width="548" height="352" alt="image" src="https://github.com/user-attachments/assets/4b6d54ed-34a1-4c29-b3cd-84b3de987bae" />
+<img width="600" height="389" alt="image" src="https://github.com/user-attachments/assets/2c7747c6-d9c7-42e8-b5ea-d94fbd64d32e" />
+
+
 ## 🎯 What's New in v1.1.0
 
 ### 🌐 Network Management Suite
