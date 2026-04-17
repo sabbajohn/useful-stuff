@@ -21,11 +21,15 @@ deb: clean
 	mkdir -p $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)
 	
 	# Copy source files
-	cp devops-toolkit.sh $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/
+	cp *.sh $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/ 2>/dev/null || true
 	cp -r devops-toolkit $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/
 	cp -r Django $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/
 	cp -r Redes $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/
 	cp -r Storage $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/
+	cp -r Services $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/
+	cp -r common $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/
+	cp -r PHP $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/ 2>/dev/null || true
+	cp -r Python $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/ 2>/dev/null || true
 	cp README.md $(DEB_DIR)/$(PACKAGE_NAME)_$(VERSION)/
 	
 	# Create debian control structure
@@ -80,15 +84,24 @@ install:
 	sudo chmod +x /opt/devops-toolkit/devops-toolkit.sh
 	sudo cp -r devops-toolkit/* /opt/devops-toolkit/
 	sudo cp -r Django /opt/devops-toolkit/
+	sudo cp -r Services /opt/devops-toolkit/ 2>/dev/null || true
+	sudo cp -r common /opt/devops-toolkit/ 2>/dev/null || true
 	sudo mkdir -p /opt/devops-toolkit/bin/scripts/network
 	sudo cp -r Redes/* /opt/devops-toolkit/bin/scripts/network/
 	sudo mkdir -p /opt/devops-toolkit/bin/scripts/storage
 	sudo cp -r Storage/* /opt/devops-toolkit/bin/scripts/storage/
+	sudo mkdir -p /opt/devops-toolkit/bin/scripts/services
+	sudo cp -r Services/* /opt/devops-toolkit/bin/scripts/services/ 2>/dev/null || true
 	sudo chmod +x /opt/devops-toolkit/bin/scripts/*.sh
 	sudo chmod +x /opt/devops-toolkit/bin/scripts/network/*.sh
 	sudo chmod +x /opt/devops-toolkit/bin/scripts/storage/*.sh
+	sudo chmod +x /opt/devops-toolkit/bin/scripts/services/*.sh 2>/dev/null || true
 	sudo ln -sf /opt/devops-toolkit/devops-toolkit.sh /usr/local/bin/devops
-	bash packaging/debian/postinst
+	@for script in /opt/devops-toolkit/bin/scripts/network/*.sh /opt/devops-toolkit/bin/scripts/storage/*.sh /opt/devops-toolkit/bin/scripts/services/*.sh; do \
+		[ -f "$$script" ] || continue; \
+		name=$$(basename "$$script" .sh); \
+		sudo ln -sf "$$script" /usr/local/bin/$$name; \
+	done
 
 # Uninstall local installation
 uninstall:

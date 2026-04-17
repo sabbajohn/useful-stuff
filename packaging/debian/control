@@ -7,7 +7,8 @@ Homepage: https://github.com/sabbajohn/useful-stuff
 
 Package: devops-toolkit
 Architecture: all
-Depends: bash (>= 4.0), curl, git, docker.io | docker-ce, python3, php-cli, gum, arp-scan
+Depends: bash (>= 4.0), curl, git, python3, php-cli
+Recommends: gum, lsof, docker.io | docker-ce, arp-scan, rsync, sshfs, ncdu, duf, cifs-utils, nfs-common
 Description: DevOps Toolkit - Collection of development and deployment scripts
  A comprehensive collection of development scripts including:
  - Django project creator with multiple templates
@@ -21,4 +22,3 @@ Description: DevOps Toolkit - Collection of development and deployment scripts
  This toolkit helps developers and DevOps engineers automate common tasks
  and streamline their development workflow. Features interactive menus,
  network device discovery, MAC address detection, and advanced SSH management.
-

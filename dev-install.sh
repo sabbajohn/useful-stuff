@@ -63,38 +63,53 @@ install_user() {
     # Cria diretórios
     mkdir -p "$install_dir/bin/scripts/network"
     mkdir -p "$install_dir/bin/scripts/storage"
+    mkdir -p "$install_dir/bin/scripts/services"
     mkdir -p "$install_dir/templates"
     
     # Copia arquivos
     echo "📁 Copiando scripts principais..."
-    cp -r devops-toolkit/* "$install_dir/"
-    
-    # Copia arquivos
     echo "📁 Copiando painel principal..."
     cp devops-toolkit.sh "$install_dir/"
     chmod +x "$install_dir/devops-toolkit.sh"
     
-    echo "📁 Copiando scripts principais..."
-    cp -r devops-toolkit/* "$install_dir/"
+    echo "📁 Copiando scripts auxiliares..."
+    cp -r devops-toolkit/* "$install_dir/" 2>/dev/null || true
     
     echo "📁 Copiando scripts de rede..."
     cp Redes/*.sh "$install_dir/bin/scripts/network/"
     
     echo "📁 Copiando scripts de storage..."
     cp Storage/*.sh "$install_dir/bin/scripts/storage/"
+
+    echo "📁 Copiando scripts de services..."
+    if [[ -d Services ]]; then
+        cp Services/*.sh "$install_dir/bin/scripts/services/"
+    fi
+
+    echo "📁 Copiando libs comuns..."
+    if [[ -d common ]]; then
+        cp -r common "$install_dir/"
+    fi
     
     echo "📁 Copiando templates Django..."
     cp -r Django "$install_dir/templates/"
     
     # Define permissões
-    chmod +x "$install_dir/bin/scripts"/*.sh 2>/dev/null || true
     chmod +x "$install_dir/bin/scripts/network"/*.sh
     chmod +x "$install_dir/bin/scripts/storage"/*.sh
+    chmod +x "$install_dir/bin/scripts/services"/*.sh 2>/dev/null || true
     
+    # Symlinks para facilitar uso direto (ssh-manager, port-checker, etc.)
+    for script in "$install_dir/bin/scripts/network"/*.sh "$install_dir/bin/scripts/storage"/*.sh "$install_dir/bin/scripts/services"/*.sh; do
+        [[ -f "$script" ]] || continue
+        script_name=$(basename "$script" .sh)
+        ln -sf "$script" "$install_dir/bin/scripts/$script_name"
+    done
+
     # Adiciona alias para o painel principal
     local bashrc="$HOME/.bashrc"
     local zshrc="$HOME/.zshrc"
-    local path_line='export PATH="$HOME/.local/bin/devops-toolkit/bin/scripts:$PATH"'
+    local path_line='export PATH="$HOME/.local/bin/devops-toolkit/bin/scripts:$HOME/.local/bin/devops-toolkit/bin/scripts/network:$HOME/.local/bin/devops-toolkit/bin/scripts/storage:$HOME/.local/bin/devops-toolkit/bin/scripts/services:$PATH"'
     local alias_line='alias devops="$HOME/.local/bin/devops-toolkit/devops-toolkit.sh"'
     
     for rc_file in "$bashrc" "$zshrc"; do
@@ -127,33 +142,48 @@ install_system() {
     # Cria diretórios
     mkdir -p "$install_dir/bin/scripts/network"
     mkdir -p "$install_dir/bin/scripts/storage"
+    mkdir -p "$install_dir/bin/scripts/services"
     mkdir -p "$install_dir/templates"
     
     # Copia arquivos
     echo "📁 Copiando scripts principais..."
-    cp -r devops-toolkit/* "$install_dir/"
-    
-    # Copia arquivos
     echo "📁 Copiando painel principal..."
     cp devops-toolkit.sh "$install_dir/"
     chmod +x "$install_dir/devops-toolkit.sh"
     
     echo "📁 Copiando scripts principais..."
-    cp -r devops-toolkit/* "$install_dir/"
+    cp -r devops-toolkit/* "$install_dir/" 2>/dev/null || true
     
     echo "📁 Copiando scripts de rede..."
     cp Redes/*.sh "$install_dir/bin/scripts/network/"
     
     echo "📁 Copiando scripts de storage..."
     cp Storage/*.sh "$install_dir/bin/scripts/storage/"
+
+    echo "📁 Copiando scripts de services..."
+    if [[ -d Services ]]; then
+        cp Services/*.sh "$install_dir/bin/scripts/services/"
+    fi
+
+    echo "📁 Copiando libs comuns..."
+    if [[ -d common ]]; then
+        cp -r common "$install_dir/"
+    fi
     
     echo "📁 Copiando templates Django..."
     cp -r Django "$install_dir/templates/"
     
     # Define permissões
-    chmod +x "$install_dir/bin/scripts"/*.sh 2>/dev/null || true
     chmod +x "$install_dir/bin/scripts/network"/*.sh
     chmod +x "$install_dir/bin/scripts/storage"/*.sh
+    chmod +x "$install_dir/bin/scripts/services"/*.sh 2>/dev/null || true
+
+    # Symlinks para facilitar uso direto (ssh-manager, port-checker, etc.)
+    for script in "$install_dir/bin/scripts/network"/*.sh "$install_dir/bin/scripts/storage"/*.sh "$install_dir/bin/scripts/services"/*.sh; do
+        [[ -f "$script" ]] || continue
+        script_name=$(basename "$script" .sh)
+        ln -sf "$script" "$install_dir/bin/scripts/$script_name"
+    done
     
     # Cria symlinks no sistema
     echo "🔗 Criando links simbólicos..."
@@ -169,6 +199,12 @@ install_system() {
     done
     
     for script in "$install_dir/bin/scripts/storage"/*.sh; do
+        local script_name=$(basename "$script" .sh)
+        ln -sf "$script" "$bin_dir/$script_name"
+    done
+
+    for script in "$install_dir/bin/scripts/services"/*.sh; do
+        [[ -f "$script" ]] || continue
         local script_name=$(basename "$script" .sh)
         ln -sf "$script" "$bin_dir/$script_name"
     done
@@ -207,6 +243,11 @@ main() {
                 rm -f /usr/local/bin/ssh-manager 2>/dev/null || true
                 rm -f /usr/local/bin/network-config-checker 2>/dev/null || true
                 rm -f /usr/local/bin/mac-storage-manager 2>/dev/null || true
+                rm -f /usr/local/bin/port-checker 2>/dev/null || true
+                rm -f /usr/local/bin/storage-manager 2>/dev/null || true
+                rm -f /usr/local/bin/linux-storage-manager 2>/dev/null || true
+                rm -f /usr/local/bin/mount-manager 2>/dev/null || true
+                rm -f /usr/local/bin/service-manager 2>/dev/null || true
             fi
             echo "✅ Remoção concluída"
         fi

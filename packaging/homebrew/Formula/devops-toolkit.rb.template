@@ -16,45 +16,81 @@ class DevopsToolkit < Formula
     libexec.install Dir["*"]
     
     # Create wrapper scripts in bin
+    (bin/"devops").write <<~EOS
+      #!/bin/bash
+      exec "#{libexec}/devops-toolkit.sh" "$@"
+    EOS
+
+    (bin/"ssh-manager").write <<~EOS
+      #!/bin/bash
+      exec "#{libexec}/Redes/ssh-manager.sh" "$@"
+    EOS
+
+    (bin/"port-checker").write <<~EOS
+      #!/bin/bash
+      exec "#{libexec}/Redes/port-checker.sh" "$@"
+    EOS
+
+    (bin/"service-manager").write <<~EOS
+      #!/bin/bash
+      exec "#{libexec}/Services/service-manager.sh" "$@"
+    EOS
+
+    (bin/"storage-manager").write <<~EOS
+      #!/bin/bash
+      exec "#{libexec}/Storage/storage-manager.sh" "$@"
+    EOS
+
+    (bin/"mount-manager").write <<~EOS
+      #!/bin/bash
+      exec "#{libexec}/Storage/mount-manager.sh" "$@"
+    EOS
+
     (bin/"django-creator").write <<~EOS
       #!/bin/bash
-      exec "#{libexec}/devops-toolkit/bin/scripts/django-project-creator-v3.sh" "$@"
+      exec "#{libexec}/django-project-creator-v3.sh" "$@"
     EOS
     
     (bin/"php-switcher").write <<~EOS
       #!/bin/bash
-      exec "#{libexec}/devops-toolkit/bin/scripts/php-switcher.sh" "$@"
+      exec "#{libexec}/PHP/php-switcher.sh" "$@"
     EOS
     
     (bin/"download-manager").write <<~EOS
       #!/bin/bash
-      exec "#{libexec}/devops-toolkit/bin/scripts/download-manager.sh" "$@"
+      exec "#{libexec}/Redes/download-manager.sh" "$@"
     EOS
     
     (bin/"laravel-start").write <<~EOS
       #!/bin/bash
-      exec "#{libexec}/devops-toolkit/bin/scripts/laravel-start.sh" "$@"
-    EOS
-    
-    (bin/"storage-manager").write <<~EOS
-      #!/bin/bash
-      exec "#{libexec}/devops-toolkit/bin/scripts/mac-storage-manager.sh" "$@"
+      exec "#{libexec}/laravel-start.sh" "$@"
     EOS
     
     (bin/"dns-fix").write <<~EOS
       #!/bin/bash
-      exec "#{libexec}/devops-toolkit/bin/scripts/quick-dns-fix.sh" "$@"
+      exec "#{libexec}/Redes/quick-dns-fix.sh" "$@"
+    EOS
+
+    (bin/"python-project-manager").write <<~EOS
+      #!/bin/bash
+      exec "#{libexec}/Python/python-project-manager.sh" "$@"
     EOS
   end
 
   test do
     # Test that the main scripts exist and are executable
+    assert_predicate bin/"devops", :exist?
+    assert_predicate bin/"ssh-manager", :exist?
+    assert_predicate bin/"port-checker", :exist?
+    assert_predicate bin/"service-manager", :exist?
+    assert_predicate bin/"storage-manager", :exist?
+    assert_predicate bin/"mount-manager", :exist?
     assert_predicate bin/"django-creator", :exist?
     assert_predicate bin/"php-switcher", :exist?
     assert_predicate bin/"download-manager", :exist?
     assert_predicate bin/"laravel-start", :exist?
-    assert_predicate bin/"storage-manager", :exist?
     assert_predicate bin/"dns-fix", :exist?
+    assert_predicate bin/"python-project-manager", :exist?
     
     # Test that Django creator shows help
     system "#{bin}/django-creator", "--help"

@@ -15,15 +15,66 @@ binary-indep: build
 	mkdir -p $(DESTDIR)/usr/share/doc/devops-toolkit
 	mkdir -p $(DESTDIR)/DEBIAN
 	
-	# Copy main script
-	cp devops-toolkit.sh $(DESTDIR)/usr/bin/devops-toolkit
-	chmod 755 $(DESTDIR)/usr/bin/devops-toolkit
-	
-	# Copy toolkit modules
-	cp -r devops-toolkit/* $(DESTDIR)/usr/share/devops-toolkit/
-	cp -r Django $(DESTDIR)/usr/share/devops-toolkit/
+	# Copy repository content needed by the launcher
+	cp devops-toolkit.sh $(DESTDIR)/usr/share/devops-toolkit/
+	cp -r common $(DESTDIR)/usr/share/devops-toolkit/
 	cp -r Redes $(DESTDIR)/usr/share/devops-toolkit/
 	cp -r Storage $(DESTDIR)/usr/share/devops-toolkit/
+	cp -r Services $(DESTDIR)/usr/share/devops-toolkit/ 2>/dev/null || true
+	cp -r Django $(DESTDIR)/usr/share/devops-toolkit/
+	cp -r PHP $(DESTDIR)/usr/share/devops-toolkit/ 2>/dev/null || true
+	cp -r Python $(DESTDIR)/usr/share/devops-toolkit/ 2>/dev/null || true
+	cp -r devops-toolkit $(DESTDIR)/usr/share/devops-toolkit/ 2>/dev/null || true
+	cp *.sh $(DESTDIR)/usr/share/devops-toolkit/ 2>/dev/null || true
+	
+	# Create command wrappers (avoid /opt and postinst symlinks)
+	echo '#!/usr/bin/env bash' > $(DESTDIR)/usr/bin/devops
+	echo 'exec /usr/share/devops-toolkit/devops-toolkit.sh "$$@"' >> $(DESTDIR)/usr/bin/devops
+	chmod 755 $(DESTDIR)/usr/bin/devops
+
+	echo '#!/usr/bin/env bash' > $(DESTDIR)/usr/bin/ssh-manager
+	echo 'exec /usr/share/devops-toolkit/Redes/ssh-manager.sh "$$@"' >> $(DESTDIR)/usr/bin/ssh-manager
+	chmod 755 $(DESTDIR)/usr/bin/ssh-manager
+
+	echo '#!/usr/bin/env bash' > $(DESTDIR)/usr/bin/port-checker
+	echo 'exec /usr/share/devops-toolkit/Redes/port-checker.sh "$$@"' >> $(DESTDIR)/usr/bin/port-checker
+	chmod 755 $(DESTDIR)/usr/bin/port-checker
+
+	echo '#!/usr/bin/env bash' > $(DESTDIR)/usr/bin/service-manager
+	echo 'exec /usr/share/devops-toolkit/Services/service-manager.sh "$$@"' >> $(DESTDIR)/usr/bin/service-manager
+	chmod 755 $(DESTDIR)/usr/bin/service-manager
+
+	echo '#!/usr/bin/env bash' > $(DESTDIR)/usr/bin/storage-manager
+	echo 'exec /usr/share/devops-toolkit/Storage/storage-manager.sh "$$@"' >> $(DESTDIR)/usr/bin/storage-manager
+	chmod 755 $(DESTDIR)/usr/bin/storage-manager
+
+	echo '#!/usr/bin/env bash' > $(DESTDIR)/usr/bin/mount-manager
+	echo 'exec /usr/share/devops-toolkit/Storage/mount-manager.sh "$$@"' >> $(DESTDIR)/usr/bin/mount-manager
+	chmod 755 $(DESTDIR)/usr/bin/mount-manager
+
+	echo '#!/usr/bin/env bash' > $(DESTDIR)/usr/bin/dns-fix
+	echo 'exec /usr/share/devops-toolkit/Redes/quick-dns-fix.sh "$$@"' >> $(DESTDIR)/usr/bin/dns-fix
+	chmod 755 $(DESTDIR)/usr/bin/dns-fix
+
+	echo '#!/usr/bin/env bash' > $(DESTDIR)/usr/bin/download-manager
+	echo 'exec /usr/share/devops-toolkit/Redes/download-manager.sh "$$@"' >> $(DESTDIR)/usr/bin/download-manager
+	chmod 755 $(DESTDIR)/usr/bin/download-manager
+
+	echo '#!/usr/bin/env bash' > $(DESTDIR)/usr/bin/php-switcher
+	echo 'exec /usr/share/devops-toolkit/PHP/php-switcher.sh "$$@"' >> $(DESTDIR)/usr/bin/php-switcher
+	chmod 755 $(DESTDIR)/usr/bin/php-switcher
+
+	echo '#!/usr/bin/env bash' > $(DESTDIR)/usr/bin/laravel-start
+	echo 'exec /usr/share/devops-toolkit/laravel-start.sh "$$@"' >> $(DESTDIR)/usr/bin/laravel-start
+	chmod 755 $(DESTDIR)/usr/bin/laravel-start
+
+	echo '#!/usr/bin/env bash' > $(DESTDIR)/usr/bin/django-creator
+	echo 'exec /usr/share/devops-toolkit/django-project-creator-v3.sh "$$@"' >> $(DESTDIR)/usr/bin/django-creator
+	chmod 755 $(DESTDIR)/usr/bin/django-creator
+
+	echo '#!/usr/bin/env bash' > $(DESTDIR)/usr/bin/python-project-manager
+	echo 'exec /usr/share/devops-toolkit/Python/python-project-manager.sh "$$@"' >> $(DESTDIR)/usr/bin/python-project-manager
+	chmod 755 $(DESTDIR)/usr/bin/python-project-manager
 	
 	# Copy documentation
 	cp README.md $(DESTDIR)/usr/share/doc/devops-toolkit/

@@ -1,17 +1,16 @@
 #!/bin/bash
 
-# Verifica se os comandos essenciais estão instalados
-for cmd in gum ssh; do
-    if ! command -v $cmd &>/dev/null; then
-        echo "Erro: '$cmd' não está instalado."
-        if [ "$cmd" = "gum" ]; then
-            echo "Para instalar o gum:"
-            echo "  macOS: brew install gum"
-            echo "  Linux: https://github.com/charmbracelet/gum#installation"
-        fi
-        exit 1
-    fi
-done
+set -euo pipefail
+IFS=$'\n\t'
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../common/cli.sh
+source "$SCRIPT_DIR/../common/cli.sh"
+
+# SSH is mandatory; gum is optional (UI only).
+if ! dtk_has_cmd ssh; then
+    dtk_die "Erro: 'ssh' não está instalado."
+fi
 
 # Verifica disponibilidade de comandos opcionais
 HAS_SSHFS=false
@@ -105,21 +104,68 @@ register_recent_connection() {
     local user="$2"
     local port="$3"
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
-    # Remove entradas antigas do mesmo IP+user+port
+
+    dtk_assert_no_pipe "host" "$ip"
+    dtk_assert_no_pipe "user" "$user"
+    dtk_assert_no_pipe "port" "$port"
+
+    local existing=""
     if [[ -f "$RECENT_CONNECTIONS" ]]; then
-        grep -v "^.*|$ip|$user|$port$" "$RECENT_CONNECTIONS" > "${RECENT_CONNECTIONS}.tmp" 2>/dev/null || true
-        mv "${RECENT_CONNECTIONS}.tmp" "$RECENT_CONNECTIONS" 2>/dev/null || true
+        existing="$(cat "$RECENT_CONNECTIONS" 2>/dev/null || true)"
     fi
-    
-    # Adiciona nova entrada
-    echo "$timestamp|$ip|$user|$port" >> "$RECENT_CONNECTIONS"
-    
-    # Mantém apenas as últimas 20 conexões
-    if [[ -f "$RECENT_CONNECTIONS" ]]; then
-        tail -n 20 "$RECENT_CONNECTIONS" > "${RECENT_CONNECTIONS}.tmp"
-        mv "${RECENT_CONNECTIONS}.tmp" "$RECENT_CONNECTIONS"
+
+    # Remove entradas antigas do mesmo IP+user+port, adiciona nova e mantém só as últimas 20.
+    local updated
+    updated="$(printf "%s\n" "$existing" | grep -v "^.*|${ip//\//\\/}|${user//\//\\/}|${port//\//\\/}$" 2>/dev/null || true)"
+    updated="$(printf "%s\n%s|%s|%s|%s\n" "$updated" "$timestamp" "$ip" "$user" "$port" | sed '/^$/d' | tail -n 20)"
+    dtk_atomic_write "$RECENT_CONNECTIONS" "$updated"$'\n'
+}
+
+ssh_build_cmd() {
+    # Outputs a shell-escaped printable representation on stdout; command array via global SSH_CMD.
+    local host="$1"
+    local user="$2"
+    local port="$3"
+    local key_path="${4:-}"
+
+    local connect_timeout="${DTK_SSH_CONNECT_TIMEOUT:-10}"
+    local alive_interval="${DTK_SSH_SERVER_ALIVE_INTERVAL:-30}"
+    local alive_count="${DTK_SSH_SERVER_ALIVE_COUNT_MAX:-3}"
+
+    SSH_CMD=(ssh
+        -o "ConnectTimeout=${connect_timeout}"
+        -o "ServerAliveInterval=${alive_interval}"
+        -o "ServerAliveCountMax=${alive_count}"
+    )
+
+    if [[ -n "$key_path" ]]; then
+        SSH_CMD+=(-i "$key_path")
     fi
+    if [[ -n "$port" && "$port" != "22" ]]; then
+        SSH_CMD+=(-p "$port")
+    fi
+    SSH_CMD+=("${user}@${host}")
+}
+
+ssh_run() {
+    local host="$1"
+    local user="$2"
+    local port="$3"
+    local key_path="${4:-}"
+    local dry_run="${5:-0}"
+
+    ssh_build_cmd "$host" "$user" "$port" "$key_path"
+
+    echo "🚀 Executando:"
+    printf '   '
+    printf '%q ' "${SSH_CMD[@]}"
+    echo
+
+    if [[ "$dry_run" = "1" ]]; then
+        return 0
+    fi
+
+    "${SSH_CMD[@]}"
 }
 
 # Função para listar chaves SSH disponíveis (busca recursiva)
@@ -187,7 +233,7 @@ ssh_connect() {
         use_suggestion=$(gum confirm "Ver sugestões de hosts?" && echo "yes" || echo "no")
         
         if [[ "$use_suggestion" == "yes" ]]; then
-            suggestions+=("\ud83d\udcdd Digitar manualmente")
+            suggestions+=("📝 Digitar manualmente")
             selected_host=$(printf '%s\n' "${suggestions[@]}" | gum choose --header="Selecione um host ou digite manualmente")
             
             if [[ "$selected_host" == "📝 Digitar manualmente" ]] || [[ -z "$selected_host" ]]; then
@@ -253,28 +299,24 @@ ssh_connect() {
         fi
     fi
     
-    # Monta o comando SSH
-    ssh_cmd="ssh"
-    
-    if [ -n "$key_path" ]; then
-        ssh_cmd="$ssh_cmd -i $key_path"
-    fi
-    
-    if [ "$port" != "22" ]; then
-        ssh_cmd="$ssh_cmd -p $port"
-    fi
-    
-    ssh_cmd="$ssh_cmd $user@$host"
-    
-    echo "🚀 Executando: $ssh_cmd"
-    echo "========================"
+    # Salva a configuração se solicitado (bloqueia pipes pois usamos '|' como delimitador).
+    dtk_assert_no_pipe "connection_name" "${connection_name:-}"
+    dtk_assert_no_pipe "user" "$user"
+    dtk_assert_no_pipe "host" "$host"
+    dtk_assert_no_pipe "port" "$port"
+    dtk_assert_no_pipe "key_path" "$key_path"
     
     # Salva a configuração se solicitado
     if gum confirm "Salvar esta configuração para uso futuro?"; then
         connection_name=$(gum input --placeholder "Nome para esta conexão")
         if [ -n "$connection_name" ]; then
-            # Salva apenas a linha de configuração, sem output adicional
-            printf "%s|%s|%s|%s|%s\n" "$connection_name" "$user" "$host" "$port" "$key_path" >> "$CONFIG_FILE"
+            dtk_assert_no_pipe "connection_name" "$connection_name"
+            # Append de forma atômica.
+            local existing=""
+            [[ -f "$CONFIG_FILE" ]] && existing="$(cat "$CONFIG_FILE" 2>/dev/null || true)"
+            local updated
+            updated="$(printf "%s\n%s|%s|%s|%s|%s\n" "$existing" "$connection_name" "$user" "$host" "$port" "$key_path" | sed '/^$/d')"
+            dtk_atomic_write "$CONFIG_FILE" "$updated"$'\n'
             echo "✅ Configuração salva como: $connection_name"
         fi
     fi
@@ -283,7 +325,7 @@ ssh_connect() {
     register_recent_connection "$host" "$user" "$port"
     
     # Executa a conexão SSH interativa
-    $ssh_cmd
+    ssh_run "$host" "$user" "$port" "$key_path" 0
     ssh_exit_code=$?
     
     if [ $ssh_exit_code -eq 0 ]; then
@@ -381,24 +423,8 @@ use_saved_connection() {
         found_key_path=""
     fi
     
-    # Monta o comando SSH
-    ssh_cmd="ssh"
-    
-    if [ -n "$found_key_path" ] && [ "$found_key_path" != "" ]; then
-        ssh_cmd="$ssh_cmd -i $found_key_path"
-    fi
-    
-    if [ "$found_port" != "22" ] && [ -n "$found_port" ]; then
-        ssh_cmd="$ssh_cmd -p $found_port"
-    fi
-    
-    ssh_cmd="$ssh_cmd $found_user@$found_host"
-    
-    echo "🚀 Executando: $ssh_cmd"
-    echo "========================"
-    
     # Executa a conexão SSH interativa (FORA DO LOOP)
-    $ssh_cmd
+    ssh_run "$found_host" "$found_user" "$found_port" "$found_key_path" 0
     ssh_exit_code=$?
     
     if [ $ssh_exit_code -eq 0 ]; then
@@ -537,27 +563,30 @@ mount_sshfs() {
         fi
         
         # Monta comando SSHFS
-        sshfs_cmd="sshfs $user@$host:$remote_path $local_mount"
+        sshfs_cmd=(sshfs "${user}@${host}:${remote_path}" "$local_mount")
         
         if [ "$port" != "22" ]; then
-            sshfs_cmd="$sshfs_cmd -p $port"
+            sshfs_cmd+=(-p "$port")
         fi
         
         if [ -n "$key_path" ]; then
-            sshfs_cmd="$sshfs_cmd -o IdentityFile=$key_path"
+            sshfs_cmd+=(-o "IdentityFile=$key_path")
         fi
         
         # Opções adicionais baseadas no sistema operacional
         if [[ "$OSTYPE" == "darwin"* ]]; then
             # macOS - usa macFUSE
-            sshfs_cmd="$sshfs_cmd -o allow_other,defer_permissions"
+            sshfs_cmd+=(-o "allow_other,defer_permissions")
         else
             # Linux - usa FUSE
-            sshfs_cmd="$sshfs_cmd -o allow_other,reconnect"
+            sshfs_cmd+=(-o "allow_other,reconnect")
         fi
         
-        echo "🚀 Executando: $sshfs_cmd"
-        eval "$sshfs_cmd"
+        echo "🚀 Executando:"
+        printf '   '
+        printf '%q ' "${sshfs_cmd[@]}"
+        echo
+        "${sshfs_cmd[@]}"
         
         if [ $? -eq 0 ]; then
             echo "✅ Diretório montado com sucesso em: $local_mount"
@@ -611,6 +640,117 @@ mount_sshfs() {
         ;;
     esac
 }
+
+# -------- CLI flags (non-interactive) --------
+show_help() {
+    cat <<EOF
+SSH Manager
+
+Uso:
+  $0                    # modo interativo (requer gum)
+  $0 --list-saved
+  $0 --saved <nome>
+  $0 --connect --host <ip/host> [--user <u>] [--port <p>] [--key <path>] [--dry-run] [--no-ui]
+
+Flags:
+  --connect             Conecta usando parâmetros informados
+  --host <host>         Host/IP
+  --user <user>         Usuário (default: \$(whoami))
+  --port <port>         Porta (default: 22)
+  --key <path>          Caminho da chave privada (opcional)
+  --list-saved          Lista conexões salvas
+  --saved <nome>        Conecta usando uma conexão salva pelo nome
+  --dry-run             Não executa, apenas mostra o comando
+  --no-ui               Força modo texto (não usa gum)
+  -h, --help            Ajuda
+
+Env:
+  DTK_SSH_CONNECT_TIMEOUT=10
+  DTK_SSH_SERVER_ALIVE_INTERVAL=30
+  DTK_SSH_SERVER_ALIVE_COUNT_MAX=3
+EOF
+}
+
+list_saved_cli() {
+    if [[ ! -f "$CONFIG_FILE" || ! -s "$CONFIG_FILE" ]]; then
+        echo "Nenhuma conexão salva."
+        return 0
+    fi
+    cat "$CONFIG_FILE"
+}
+
+connect_saved_by_name() {
+    local name="$1"
+    if [[ ! -f "$CONFIG_FILE" || ! -s "$CONFIG_FILE" ]]; then
+        dtk_die "Nenhuma conexão salva em $CONFIG_FILE"
+    fi
+    local line
+    line="$(grep -F "^${name}|" "$CONFIG_FILE" | tail -n 1 || true)"
+    if [[ -z "$line" ]]; then
+        dtk_die "Conexão não encontrada: $name"
+    fi
+    local found_name found_user found_host found_port found_key
+    IFS='|' read -r found_name found_user found_host found_port found_key <<<"$line"
+    ssh_run "$found_host" "$found_user" "${found_port:-22}" "${found_key:-}" 0
+}
+
+connect_cli() {
+    local host="$1"
+    local user="$2"
+    local port="$3"
+    local key="$4"
+    local dry_run="$5"
+    [[ -z "$host" ]] && dtk_die "--host é obrigatório"
+    ssh_run "$host" "${user:-$(whoami)}" "${port:-22}" "$key" "$dry_run"
+}
+
+NO_UI=0
+DRY_RUN=0
+DO_CONNECT=0
+HOST=""
+USER_ARG=""
+PORT="22"
+KEY_PATH=""
+LIST_SAVED=0
+SAVED_NAME=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --no-ui) NO_UI=1; shift ;;
+        --dry-run) DRY_RUN=1; shift ;;
+        --connect) DO_CONNECT=1; shift ;;
+        --host) HOST="${2:-}"; shift 2 ;;
+        --user) USER_ARG="${2:-}"; shift 2 ;;
+        --port) PORT="${2:-}"; shift 2 ;;
+        --key) KEY_PATH="${2:-}"; shift 2 ;;
+        --list-saved) LIST_SAVED=1; shift ;;
+        --saved) SAVED_NAME="${2:-}"; shift 2 ;;
+        -h|--help) show_help; exit 0 ;;
+        *) dtk_die "Argumento desconhecido: $1" ;;
+    esac
+done
+
+if [[ "$LIST_SAVED" = "1" ]]; then
+    list_saved_cli
+    exit 0
+fi
+
+if [[ -n "$SAVED_NAME" ]]; then
+    connect_saved_by_name "$SAVED_NAME"
+    exit 0
+fi
+
+if [[ "$DO_CONNECT" = "1" ]]; then
+    connect_cli "$HOST" "$USER_ARG" "$PORT" "$KEY_PATH" "$DRY_RUN"
+    exit $?
+fi
+
+# Default: interactive UI
+if ! dtk_ui_available "$NO_UI"; then
+    show_help
+    dtk_warn "Para modo interativo, instale 'gum' ou use flags (ex.: --connect ...)."
+    exit 1
+fi
 
 # Função para gerenciar chaves SSH
 manage_ssh_keys() {

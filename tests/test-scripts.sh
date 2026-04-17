@@ -181,6 +181,20 @@ main() {
             fi
         done
     fi
+
+    # Test shared library scripts
+    if [[ -f "$ROOT_DIR/common/cli.sh" ]]; then
+        test_script_syntax "$ROOT_DIR/common/cli.sh"
+        test_shebang "$ROOT_DIR/common/cli.sh"
+    fi
+
+    # Test module scripts
+    for script in "$ROOT_DIR"/Redes/*.sh "$ROOT_DIR"/Storage/*.sh "$ROOT_DIR"/Services/*.sh "$ROOT_DIR"/devops-toolkit/bin/*.sh; do
+        if [[ -f "$script" ]]; then
+            test_script_syntax "$script"
+            test_shebang "$script"
+        fi
+    done
     
     # Test main scripts
     for script in "$ROOT_DIR"/*.sh; do

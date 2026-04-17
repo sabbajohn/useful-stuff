@@ -17,6 +17,11 @@ jobs:
     - name: Make scripts executable
       run: |
         chmod +x devops-toolkit/bin/scripts/*.sh
+        chmod +x devops-toolkit/bin/*.sh || true
+        chmod +x Redes/*.sh || true
+        chmod +x Storage/*.sh || true
+        chmod +x Services/*.sh || true
+        chmod +x common/*.sh || true
         chmod +x *.sh
     
     - name: Run basic tests

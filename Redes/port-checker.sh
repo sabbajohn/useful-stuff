@@ -1,23 +1,44 @@
 #!/bin/bash
 
-# Detecta o sistema operacional
-OS="$(uname -s)"
-case "${OS}" in
-    Linux*)     MACHINE=Linux;;
-    Darwin*)    MACHINE=macOS;;
-    *)          MACHINE="UNKNOWN:${OS}"
-esac
+set -euo pipefail
+IFS=$'\n\t'
 
-# Verifica se os comandos essenciais estão instalados
-for cmd in lsof gum; do
-    if ! command -v $cmd &>/dev/null; then
-        echo "Erro: '$cmd' não está instalado."
-        if [[ "$MACHINE" == "macOS" ]]; then
-            echo "Para instalar no macOS: brew install $cmd"
-        fi
-        exit 1
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../common/cli.sh
+source "$SCRIPT_DIR/../common/cli.sh"
+
+MACHINE="$(dtk_os)"
+
+NO_UI=0
+YES=0
+
+usage() {
+    cat <<EOF
+Port Checker
+
+Uso:
+  $0                          # modo interativo (gum opcional)
+  $0 --list [--no-ui]
+  $0 --port <p> [--no-ui]
+  $0 --stop-port <p> [--yes] [--no-ui]
+  $0 --kill-pid <pid> [--yes] [--no-ui]
+
+Flags:
+  --list                      Lista listeners
+  --port <p>                  Mostra status de uma porta
+  --stop-port <p>             Para o serviço/container/processo que está usando a porta
+  --kill-pid <pid>            Encerra um PID (SIGTERM -> SIGKILL)
+  --yes                       Não perguntar confirmação (cuidado)
+  --no-ui                     Força modo texto
+  -h, --help                  Ajuda
+EOF
+}
+
+require_lsof_or_die() {
+    if ! dtk_has_cmd lsof; then
+        dtk_die "lsof não encontrado. Instale: macOS: brew install lsof | Ubuntu: sudo apt install lsof"
     fi
-done
+}
 
 # Verifica se Docker está disponível (opcional)
 DOCKER_AVAILABLE=false
@@ -54,6 +75,70 @@ run_lsof() {
         sudo lsof "$@"
     fi
 }
+
+service_name_for() {
+    local port="$1"
+    local proto="$2"
+    if dtk_has_cmd getent; then
+        getent services "${port}/${proto}" 2>/dev/null | awk '{print $1}' | head -n 1
+        return 0
+    fi
+    if [[ -f /etc/services ]]; then
+        awk -v p="${port}/${proto}" '$2==p {print $1; exit}' /etc/services 2>/dev/null || true
+    fi
+}
+
+systemd_unit_for_pid() {
+    local pid="$1"
+    [[ "$MACHINE" != "Linux" ]] && return 1
+    ! dtk_has_cmd systemctl && return 1
+
+    local status
+    status="$(systemctl status "$pid" --no-pager 2>/dev/null || true)"
+    [[ -z "$status" ]] && return 1
+
+    local unit=""
+    unit="$(echo "$status" | sed -n '1s/^●[[:space:]]\\{1,\\}\\([^[:space:]]\\+\\.service\\).*/\\1/p' | head -n 1)"
+    if [[ -n "$unit" ]]; then
+        echo "$unit"
+        return 0
+    fi
+    unit="$(echo "$status" | sed -n 's/^[[:space:]]*CGroup: .*\\/\\([^/]*\\.service\\).*/\\1/p' | head -n 1)"
+    [[ -n "$unit" ]] && echo "$unit"
+}
+
+docker_container_for_pid() {
+    local pid="$1"
+    [[ "$MACHINE" != "Linux" ]] && return 1
+    [[ ! -r "/proc/$pid/cgroup" ]] && return 1
+    ! dtk_has_cmd docker && return 1
+
+    local id
+    id="$(grep -Eo '[0-9a-f]{64}' "/proc/$pid/cgroup" 2>/dev/null | head -n 1 || true)"
+    [[ -z "$id" ]] && return 1
+    echo "$id"
+}
+
+kill_pid_gracefully() {
+    local pid="$1"
+    local ask="${2:-1}"
+    if [[ "$ask" = "1" && "$YES" != "1" ]]; then
+        if ! dtk_ui_confirm "$NO_UI" "Encerrar PID $pid (SIGTERM -> SIGKILL se necessário)?"; then
+            return 1
+        fi
+    fi
+
+    if kill -TERM "$pid" 2>/dev/null; then
+        sleep 2
+        if kill -0 "$pid" 2>/dev/null; then
+            kill -KILL "$pid" 2>/dev/null || true
+        fi
+        return 0
+    fi
+
+    dtk_warn "Falhou em encerrar PID $pid (permite? tente com sudo)."
+    return 1
+}
 # Função para pegar nome do container Docker
 get_docker_container_name() {
     local pid=$1
@@ -76,9 +161,103 @@ get_docker_container_name() {
 
 # Função para listar processos/portas
 list_ports() {
-    run_lsof -i -P -n | grep LISTEN | \
-    awk '{printf "%-8s %-10s %-10s %-6s %-20s\n", $1, $2, $3, $9, $NF}' | \
-    sort -u
+    require_lsof_or_die
+    run_lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null | awk '
+        NR==1 { next }
+        {
+            cmd=$1; pid=$2; user=$3; name=$NF;
+            gsub("\\(LISTEN\\)","",name);
+            port=name;
+            sub(/^.*:/,"",port);
+            if (port ~ /^[0-9]+$/) {
+                printf "tcp\t%s\t%s\t%s\t%s\n", port, pid, user, cmd
+            }
+        }
+    ' | sort -u
+}
+
+format_listeners_table() {
+    local lines="$1"
+    if [[ -z "$lines" ]]; then
+        echo ""
+        return
+    fi
+    echo "$lines" | awk -F'\t' '
+        BEGIN { printf "%-5s %-6s %-8s %-12s %-18s %-14s\n", "PROTO", "PORT", "PID", "USER", "CMD", "SERVICE" }
+        {
+            proto=$1; port=$2; pid=$3; user=$4; cmd=$5;
+            printf "%-5s %-6s %-8s %-12s %-18s %-14s\n", proto, port, pid, user, cmd, ""
+        }
+    '
+}
+
+enrich_listener_line() {
+    # Input: proto\tport\tpid\tuser\tcmd
+    local line="$1"
+    local proto port pid user cmd
+    IFS=$'\t' read -r proto port pid user cmd <<<"$line"
+    local svc=""
+    svc="$(service_name_for "$port" "$proto" || true)"
+    local unit=""
+    unit="$(systemd_unit_for_pid "$pid" || true)"
+    local container=""
+    container="$(docker_container_for_pid "$pid" || true)"
+    printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" "$proto" "$port" "$pid" "$user" "$cmd" "${svc:-}" "${unit:-}" "${container:-}"
+}
+
+show_port_status() {
+    local port="$1"
+    local lines
+    lines="$(list_ports | awk -F'\t' -v p="$port" '$2==p {print}')"
+    if [[ -z "$lines" ]]; then
+        echo "✅ Porta $port está LIVRE"
+        return 0
+    fi
+    echo "❌ Porta $port está OCUPADA:"
+    while IFS= read -r line; do
+        local enriched
+        enriched="$(enrich_listener_line "$line")"
+        echo "$enriched" | awk -F'\t' '{
+            printf "  proto=%s port=%s pid=%s user=%s cmd=%s\n", $1,$2,$3,$4,$5
+            if ($6!="") printf "  service=%s\n",$6
+            if ($7!="") printf "  systemd=%s\n",$7
+            if ($8!="") printf "  docker=%s\n",$8
+        }'
+    done <<<"$lines"
+}
+
+stop_port() {
+    local port="$1"
+    local line
+    line="$(list_ports | awk -F'\t' -v p="$port" '$2==p {print; exit}')"
+    if [[ -z "$line" ]]; then
+        echo "✅ Porta $port já está livre."
+        return 0
+    fi
+    local enriched proto pid unit container cmd user svc
+    enriched="$(enrich_listener_line "$line")"
+    IFS=$'\t' read -r proto _port pid user cmd svc unit container <<<"$enriched"
+
+    if [[ -n "$unit" && "$MACHINE" == "Linux" && -n "${unit:-}" && $(dtk_has_cmd systemctl; echo $?) -eq 0 ]]; then
+        if [[ "$YES" = "1" ]] || dtk_ui_confirm "$NO_UI" "Parar serviço systemd '$unit' (porta $port)?" ; then
+            sudo systemctl stop "$unit"
+            return $?
+        fi
+        return 1
+    fi
+
+    if [[ -n "$container" && "$MACHINE" == "Linux" && $(dtk_has_cmd docker; echo $?) -eq 0 ]]; then
+        local name
+        name="$(docker inspect --format '{{.Name}}' "$container" 2>/dev/null | sed 's#^/##' || true)"
+        local target="${name:-$container}"
+        if [[ "$YES" = "1" ]] || dtk_ui_confirm "$NO_UI" "Parar container Docker '$target' (porta $port)?" ; then
+            docker stop "$target"
+            return $?
+        fi
+        return 1
+    fi
+
+    kill_pid_gracefully "$pid" 1
 }
 
 # Monitoramento amigável
@@ -139,65 +318,103 @@ check_ports() {
 
 # Função interativa usando gum
 interactive_list() {
-    local linhas=$(list_ports)
+    local linhas
+    linhas="$(list_ports)"
 
     if [[ -z "$linhas" ]]; then
-        gum style --foreground 1 "❌ Nenhuma porta LISTEN encontrada."
-        sleep 2
+        echo "❌ Nenhuma porta LISTEN encontrada."
         return
     fi
 
-    local selection=$(echo "$linhas" | gum choose --no-limit --header="🖥️ $MACHINE | 🐳 Docker: $([ "$DOCKER_AVAILABLE" == "true" ] && echo "✅" || echo "❌") | Selecione uma ou mais portas para detalhes")
+    if ! dtk_ui_available "$NO_UI"; then
+        echo "$linhas" | awk -F'\t' '{printf "%s/%s pid=%s user=%s cmd=%s\n",$1,$2,$3,$4,$5}'
+        return
+    fi
+
+    local menu
+    menu="$(echo "$linhas" | awk -F'\t' '{printf "%s/%s\tpid=%s\tuser=%s\tcmd=%s\n",$1,$2,$3,$4,$5}')"
+    local selection
+    selection="$(echo "$menu" | gum choose --header="🖥️ $MACHINE | Selecione uma porta")"
     [[ -z "$selection" ]] && return
 
-    IFS=$'\n'
-    for linha in $selection; do
-        local pid=$(echo "$linha" | awk '{print $2}')
-        [[ -z "$pid" ]] && continue
+    local port
+    port="$(echo "$selection" | awk '{print $1}' | awk -F'/' '{print $2}')"
+    show_port_status "$port"
 
-        local info=$(get_process_info "$pid")
-        local cname=""
-        
-        if [[ "$DOCKER_AVAILABLE" == "true" ]]; then
-            cname=$(get_docker_container_name "$pid")
-        fi
-
-        echo "=========================="
-        echo "🆔 Processo: $info"
-        if [ -n "$cname" ]; then
-            echo "🐳 Container Docker: $cname"
-        fi
-        echo "=========================="
-        echo
-    done
-
-    unset IFS
-
-    gum confirm "Deseja retornar ao menu?" || exit 0
+    local action
+    action="$(gum choose "⛔ Parar (systemd/docker/kill)" "ℹ️  Status" "↩️  Voltar")"
+    case "$action" in
+        "⛔ Parar"*) stop_port "$port" ;;
+        "ℹ️  Status"*) show_port_status "$port" ;;
+        *) return ;;
+    esac
 }
 
-# Loop principal
-echo "🖥️  Port Checker - Sistema: $MACHINE"
-echo "🐳 Docker: $([ "$DOCKER_AVAILABLE" == "true" ] && echo "Disponível" || echo "Não disponível")"
-echo
+LIST=0
+SHOW_PORT=""
+STOP_PORT=""
+KILL_PID=""
 
-while true; do
-    opcao=$(gum choose "📜 Listar portas e processos" "🔍 Verificar se porta(s) estão livres" "🚦 Monitorar porta" "🚪 Sair")
-
-    case "$opcao" in
-    "📜 Listar portas e processos")
-        interactive_list
-        ;;
-    "🔍 Verificar se porta(s) estão livres")
-        check_ports
-        ;;
-    "🚦 Monitorar porta")
-        porta=$(gum input --placeholder "Digite a porta para monitorar")
-        [[ -n "$porta" ]] && monitor_port "$porta"
-        ;;
-    "🚪 Sair")
-        echo "👋 Obrigado por usar o Port Checker!"
-        exit 0
-        ;;
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --no-ui) NO_UI=1; shift ;;
+        --yes) YES=1; shift ;;
+        --list) LIST=1; shift ;;
+        --port) SHOW_PORT="${2:-}"; shift 2 ;;
+        --stop-port) STOP_PORT="${2:-}"; shift 2 ;;
+        --kill-pid) KILL_PID="${2:-}"; shift 2 ;;
+        -h|--help) usage; exit 0 ;;
+        *) dtk_die "Argumento desconhecido: $1" ;;
     esac
 done
+
+if [[ "$LIST" = "1" ]]; then
+    list_ports | while IFS= read -r line; do enrich_listener_line "$line"; done | awk -F'\t' 'BEGIN{
+        printf "%-5s %-6s %-8s %-12s %-18s %-14s %-22s %-14s\n","PROTO","PORT","PID","USER","CMD","SERVICE","SYSTEMD","DOCKER"
+    }{
+        printf "%-5s %-6s %-8s %-12s %-18s %-14s %-22s %-14s\n",$1,$2,$3,$4,$5,($6==""?"-":$6),($7==""?"-":$7),($8==""?"-":substr($8,1,12))
+    }'
+    exit 0
+fi
+
+if [[ -n "$SHOW_PORT" ]]; then
+    show_port_status "$SHOW_PORT"
+    exit 0
+fi
+
+if [[ -n "$STOP_PORT" ]]; then
+    stop_port "$STOP_PORT"
+    exit $?
+fi
+
+if [[ -n "$KILL_PID" ]]; then
+    kill_pid_gracefully "$KILL_PID" 1
+    exit $?
+fi
+
+echo "🖥️  Port Checker - Sistema: $MACHINE"
+echo
+
+if dtk_ui_available "$NO_UI"; then
+    while true; do
+        opcao=$(gum choose "📜 Listar/Selecionar porta" "🔍 Verificar porta(s)" "🚦 Monitorar porta" "🚪 Sair")
+        case "$opcao" in
+            "📜 Listar/Selecionar porta") interactive_list ;;
+            "🔍 Verificar porta(s)")
+                if dtk_has_cmd gum; then
+                    check_ports
+                else
+                    p="$(dtk_ui_input "$NO_UI" "Digite a(s) porta(s) separadas por espaço" "")"
+                    [[ -n "$p" ]] && for x in $p; do show_port_status "$x"; done
+                fi
+                ;;
+            "🚦 Monitorar porta")
+                porta=$(gum input --placeholder "Digite a porta para monitorar")
+                [[ -n "$porta" ]] && monitor_port "$porta"
+                ;;
+            "🚪 Sair") exit 0 ;;
+        esac
+    done
+else
+    usage
+fi

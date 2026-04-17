@@ -35,7 +35,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Verifica se os diretórios principais existem
 check_directories() {
     local missing_dirs=()
-    for dir in "Redes" "Storage" "Django"; do
+    for dir in "Redes" "Storage" "Django" "Services" "common"; do
         if [[ ! -d "$SCRIPT_DIR/$dir" ]]; then
             missing_dirs+=("$dir")
         fi
@@ -108,15 +108,16 @@ storage_menu() {
     echo ""
     
     local option=$(gum choose \
-        "🧹 Mac Storage Manager - Limpeza e otimização de disco" \
+        "🧰 Storage Manager - Gerenciador (macOS/Linux)" \
         "🔗 Symlink Manager - Gerenciamento de links simbólicos" \
-        "📊 Disk Usage Analyzer - Análise de uso do disco" \
+        "📊 Disk Usage - Visão rápida do disco" \
+        "🧾 Mount Manager - Montar SMB/NFS" \
         "⬅️  Voltar ao menu principal")
     
     case "$option" in
-    *"Mac Storage Manager"*)
-        echo "🚀 Iniciando Mac Storage Manager..."
-        "$SCRIPT_DIR/Storage/mac-storage-manager.sh"
+    *"Storage Manager"*)
+        echo "🚀 Iniciando Storage Manager..."
+        "$SCRIPT_DIR/Storage/storage-manager.sh"
         ;;
     *"Symlink Manager"*)
         echo "🚀 Iniciando Symlink Manager..."
@@ -124,12 +125,31 @@ storage_menu() {
         ;;
     *"Disk Usage"*)
         echo "🚀 Analisando uso do disco..."
-        "$SCRIPT_DIR/Storage/mac-storage-manager.sh" disk-usage
+        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            "$SCRIPT_DIR/Storage/linux-storage-manager.sh" --disk-usage --no-ui
+        else
+            "$SCRIPT_DIR/Storage/mac-storage-manager.sh" disk-usage
+        fi
+        gum confirm "Pressione Enter para continuar..." || true
+        ;;
+    *"Mount Manager"*)
+        echo "🚀 Iniciando Mount Manager..."
+        "$SCRIPT_DIR/Storage/mount-manager.sh"
         ;;
     *"Voltar"*)
         return
         ;;
     esac
+}
+
+# Menu de Services
+services_menu() {
+    show_header
+    echo "🧩 Services"
+    echo "==========="
+    echo ""
+
+    "$SCRIPT_DIR/Services/service-manager.sh"
 }
 
 # Menu de Django Development
@@ -272,7 +292,7 @@ info_menu() {
     echo "==============="
     local script_count=$(find "$SCRIPT_DIR" -name "*.sh" -type f | wc -l)
     echo "   📜 Scripts disponíveis: $script_count"
-    echo "   📁 Diretórios principais: Network, Storage, Django, System"
+    echo "   📁 Diretórios principais: Network, Storage, Services, Django, System"
     
     local size=$(du -sh "$SCRIPT_DIR" 2>/dev/null | awk '{print $1}')
     echo "   💽 Tamanho total: $size"
@@ -289,6 +309,7 @@ main_menu() {
         local option=$(gum choose \
             "🌐 Network & SSH - Gerenciamento de rede e conexões SSH" \
             "💾 Storage Management - Limpeza e otimização de storage" \
+            "🧩 Services - Listar/gerenciar serviços (systemd/launchd)" \
             "🐍 Django Development - Criação e gestão de projetos Django" \
             "🔧 System Utilities - Ferramentas do sistema e utilitários" \
             "ℹ️  Informações - Status do sistema e dependências" \
@@ -300,6 +321,9 @@ main_menu() {
             ;;
         *"Storage Management"*)
             storage_menu
+            ;;
+        *"Services"*)
+            services_menu
             ;;
         *"Django Development"*)
             django_menu
