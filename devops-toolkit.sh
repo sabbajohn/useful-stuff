@@ -28,9 +28,20 @@ fi
 
 # Detecta o diretório base dos scripts
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PHP_CONFIG_FILE="$HOME/.php_versions"
+
+load_php_environment() {
+    if [[ -f "$PHP_CONFIG_FILE" ]]; then
+        # shellcheck disable=SC1090
+        source "$PHP_CONFIG_FILE"
+        hash -r 2>/dev/null || true
+    fi
+}
 
 # Debug mode (uncomment for troubleshooting)
 # set -x
+
+load_php_environment
 
 # Verifica se os diretórios principais existem
 check_directories() {
@@ -226,6 +237,7 @@ system_menu() {
     *"PHP Switcher"*)
         echo "🚀 Iniciando PHP Switcher..."
         "$SCRIPT_DIR/PHP/php-switcher.sh"
+        load_php_environment
         ;;
     *"Download Manager"*)
         echo "🚀 Iniciando Download Manager..."
